@@ -1,0 +1,4 @@
+# Binário compilado (não versionar)
+flappy_capivara
+*.o
+.DS_Store
