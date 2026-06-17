@@ -10,11 +10,17 @@
 #include <cstdlib>   // exit()
 #include <vector>    // std::vector para guardar os vértices
 #include <cstdio>    // printf para mensagens no terminal
+#include <cmath>     // sinf() para a animação de bater as asas
 
 // Biblioteca Assimp — carrega o modelo 3D (.obj) da capivara
 #include <assimp/cimport.h>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+
+// stb_image — carrega a imagem PNG da textura (1 arquivo, domínio público).
+// STB_IMAGE_IMPLEMENTATION faz o header incluir o código de fato.
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 // ============================================================
 //  Configurações da janela
@@ -40,32 +46,39 @@ const float CAPIVARA_X = -2.0f;   // um pouco à esquerda
 const float CAPIVARA_Y =  2.5f;   // altura inicial
 
 // ============================================================
-//  MODELO 3D DA CAPIVARA (carregado de um arquivo .obj)
-//  Usamos a biblioteca Assimp para ler o arquivo e guardamos
-//  o resultado em variáveis globais para desenhar a cada frame.
+//  STRUCT MODELO — guarda tudo que precisamos de um modelo 3D.
+//  Usamos a MESMA struct e as MESMAS funções para a capivara,
+//  as asas e (depois) as árvores. Isso evita repetir código.
 // ============================================================
-const char* CAMINHO_MODELO = "Capybara/Capybara.obj";
+struct Modelo {
+    const aiScene* cena = nullptr;   // dados 3D carregados pela Assimp
+    GLuint textura = 0;              // textura (0 = não tem, usa cor)
+    float corR = 1, corG = 1, corB = 1;  // cor quando não há textura
+    // Centro e escala calculados do "bounding box" para normalizar:
+    float centroX = 0, centroY = 0, centroZ = 0;
+    float escala = 1.0f;
+};
 
-// Ponteiro para a cena 3D carregada pela Assimp (malha, vértices...)
-const aiScene* g_cena = nullptr;
+// Os modelos do jogo
+Modelo g_capivara;
+Modelo g_asas;
 
-// Para encaixar a capivara na tela, guardamos o centro e a escala
-// calculados a partir do "bounding box" (caixa que envolve o modelo).
-float g_centroX = 0, g_centroY = 0, g_centroZ = 0;
-float g_escala  = 1.0f;
+// Caminhos dos arquivos (pasta models3d/)
+const char* OBJ_CAPIVARA = "models3d/Capybara/Capybara.obj";
+const char* TEX_CAPIVARA = "models3d/Capybara/Capybara_BaseColor.png";
+const char* OBJ_ASAS     = "models3d/wings/wings.obj";
 
 // ------------------------------------------------------------
-//  Calcula a caixa que envolve o modelo (menor e maior ponto)
-//  para podermos centralizar e redimensionar a capivara.
+//  Calcula o centro e a escala de UM modelo a partir da caixa
+//  que envolve todos os seus vértices (bounding box).
+//  tamanhoAlvo = quantas unidades a maior dimensão deve ocupar.
 // ------------------------------------------------------------
-void calcularBoundingBox() {
-    // Inicializa os extremos com valores bem grandes/pequenos
+void calcularBoundingBox(Modelo& mod, float tamanhoAlvo) {
     float minX =  1e9, minY =  1e9, minZ =  1e9;
     float maxX = -1e9, maxY = -1e9, maxZ = -1e9;
 
-    // Percorre todas as malhas e todos os vértices do modelo
-    for (unsigned int m = 0; m < g_cena->mNumMeshes; m++) {
-        const aiMesh* malha = g_cena->mMeshes[m];
+    for (unsigned int m = 0; m < mod.cena->mNumMeshes; m++) {
+        const aiMesh* malha = mod.cena->mMeshes[m];
         for (unsigned int v = 0; v < malha->mNumVertices; v++) {
             aiVector3D p = malha->mVertices[v];
             if (p.x < minX) minX = p.x;  if (p.x > maxX) maxX = p.x;
@@ -74,96 +87,163 @@ void calcularBoundingBox() {
         }
     }
 
-    // Centro = meio da caixa
-    g_centroX = (minX + maxX) / 2.0f;
-    g_centroY = (minY + maxY) / 2.0f;
-    g_centroZ = (minZ + maxZ) / 2.0f;
+    mod.centroX = (minX + maxX) / 2.0f;
+    mod.centroY = (minY + maxY) / 2.0f;
+    mod.centroZ = (minZ + maxZ) / 2.0f;
 
-    // Escala = faz a maior dimensão virar ~2 unidades no jogo
-    float tamX = maxX - minX;
-    float tamY = maxY - minY;
-    float tamZ = maxZ - minZ;
-    float maior = tamX;
-    if (tamY > maior) maior = tamY;
-    if (tamZ > maior) maior = tamZ;
-    if (maior > 0) g_escala = 2.8f / maior;  // tamanho da capivara na tela
+    float maior = maxX - minX;
+    if (maxY - minY > maior) maior = maxY - minY;
+    if (maxZ - minZ > maior) maior = maxZ - minZ;
+    if (maior > 0) mod.escala = tamanhoAlvo / maior;
 }
 
 // ------------------------------------------------------------
-//  Carrega o modelo do disco. Chamado uma única vez no main().
+//  Carrega UM modelo .obj do disco para a struct Modelo.
 //  Retorna true se deu certo.
 // ------------------------------------------------------------
-bool carregarCapivara() {
-    // aiImportFile lê o arquivo e já faz pós-processamento:
-    //  - Triangulate: transforma qualquer face em triângulos
-    //  - GenSmoothNormals: gera normais (necessárias p/ iluminação)
-    g_cena = aiImportFile(CAMINHO_MODELO,
-                          aiProcess_Triangulate |
-                          aiProcess_GenSmoothNormals);
+bool carregarModelo(Modelo& mod, const char* caminhoObj, float tamanhoAlvo) {
+    // Triangulate: vira tudo triângulo. GenSmoothNormals: cria normais.
+    mod.cena = aiImportFile(caminhoObj,
+                            aiProcess_Triangulate |
+                            aiProcess_GenSmoothNormals);
 
-    if (!g_cena || g_cena->mNumMeshes == 0) {
-        printf("ERRO: nao consegui carregar '%s'\n", CAMINHO_MODELO);
-        printf("Coloque o arquivo .obj nessa pasta e tente de novo.\n");
+    if (!mod.cena || mod.cena->mNumMeshes == 0) {
+        printf("ERRO: nao consegui carregar '%s'\n", caminhoObj);
         return false;
     }
 
-    calcularBoundingBox();
-    printf("Modelo carregado: %u malha(s).\n", g_cena->mNumMeshes);
+    calcularBoundingBox(mod, tamanhoAlvo);
+    printf("Modelo '%s' carregado: %u malha(s).\n",
+           caminhoObj, mod.cena->mNumMeshes);
     return true;
 }
 
-// ============================================================
-//  Desenha a capivara: percorre cada triângulo do modelo
-//  carregado e envia os vértices/normais para o OpenGL.
-// ============================================================
-void desenharCapivara() {
-    if (!g_cena) return;  // modelo não carregado, não desenha nada
+// ------------------------------------------------------------
+//  Carrega uma imagem PNG como textura para um Modelo.
+//  Precisa ser chamada DEPOIS de criar a janela (contexto GL).
+// ------------------------------------------------------------
+void carregarTextura(Modelo& mod, const char* caminho) {
+    int largura, altura, canais;
 
-    glPushMatrix();
+    // OpenGL espera a imagem de baixo p/ cima; invertemos na vertical.
+    stbi_set_flip_vertically_on_load(true);
 
-    // 1) Posiciona a capivara no mundo (plano XY do jogo)
-    glTranslatef(CAPIVARA_X, CAPIVARA_Y, 0.0f);
-
-    // 2) Gira a capivara para ficar de PERFIL, olhando para a direita
-    //    (90° no eixo Y deixa a capivara olhando para a direita, +X)
-    glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
-
-    // 3) Aplica a escala calculada (encaixa na tela)
-    glScalef(g_escala, g_escala, g_escala);
-
-    // 4) Centraliza o modelo na origem (tira o deslocamento dele)
-    glTranslatef(-g_centroX, -g_centroY, -g_centroZ);
-
-    // Cor base da capivara (caramelo) — depois a textura/luz refina
-    glColor3f(0.62f, 0.47f, 0.32f);
-
-    // Percorre cada malha do modelo
-    for (unsigned int m = 0; m < g_cena->mNumMeshes; m++) {
-        const aiMesh* malha = g_cena->mMeshes[m];
-
-        // Cada "face" já é um triângulo (por causa do Triangulate)
-        glBegin(GL_TRIANGLES);
-        for (unsigned int f = 0; f < malha->mNumFaces; f++) {
-            const aiFace& face = malha->mFaces[f];
-
-            // Para cada um dos 3 vértices do triângulo
-            for (unsigned int i = 0; i < face.mNumIndices; i++) {
-                unsigned int idx = face.mIndices[i];
-
-                // Normal (direção da superfície) — usada pela iluminação
-                if (malha->HasNormals()) {
-                    aiVector3D n = malha->mNormals[idx];
-                    glNormal3f(n.x, n.y, n.z);
-                }
-
-                // Posição do vértice
-                aiVector3D p = malha->mVertices[idx];
-                glVertex3f(p.x, p.y, p.z);
-            }
-        }
-        glEnd();
+    unsigned char* dados = stbi_load(caminho, &largura, &altura, &canais, 3);
+    if (!dados) {
+        printf("AVISO: nao consegui carregar a textura '%s'.\n", caminho);
+        return;
     }
 
+    glGenTextures(1, &mod.textura);
+    glBindTexture(GL_TEXTURE_2D, mod.textura);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, largura, altura, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, dados);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    stbi_image_free(dados);
+    printf("Textura '%s' carregada: %dx%d.\n", caminho, largura, altura);
+}
+
+// ------------------------------------------------------------
+//  Desenha UM modelo já normalizado (centralizado e escalado).
+//  Quem chama é responsável por posicionar/rotacionar antes
+//  (glTranslatef / glRotatef no mundo).
+// ------------------------------------------------------------
+void desenharModelo(const Modelo& mod) {
+    if (!mod.cena) return;
+
+    glPushMatrix();
+        // Aplica a escala e centraliza o modelo na origem
+        glScalef(mod.escala, mod.escala, mod.escala);
+        glTranslatef(-mod.centroX, -mod.centroY, -mod.centroZ);
+
+        // Com textura: cor branca para mostrar as cores da imagem.
+        // Sem textura: usa a cor definida na struct.
+        if (mod.textura != 0) {
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, mod.textura);
+            glColor3f(1.0f, 1.0f, 1.0f);
+        } else {
+            glColor3f(mod.corR, mod.corG, mod.corB);
+        }
+
+        // Percorre cada malha e desenha seus triângulos
+        for (unsigned int m = 0; m < mod.cena->mNumMeshes; m++) {
+            const aiMesh* malha = mod.cena->mMeshes[m];
+            bool temUV = malha->HasTextureCoords(0);
+
+            glBegin(GL_TRIANGLES);
+            for (unsigned int f = 0; f < malha->mNumFaces; f++) {
+                const aiFace& face = malha->mFaces[f];
+                for (unsigned int i = 0; i < face.mNumIndices; i++) {
+                    unsigned int idx = face.mIndices[i];
+
+                    if (malha->HasNormals()) {
+                        aiVector3D n = malha->mNormals[idx];
+                        glNormal3f(n.x, n.y, n.z);
+                    }
+                    if (temUV) {
+                        aiVector3D uv = malha->mTextureCoords[0][idx];
+                        glTexCoord2f(uv.x, uv.y);
+                    }
+                    aiVector3D p = malha->mVertices[idx];
+                    glVertex3f(p.x, p.y, p.z);
+                }
+            }
+            glEnd();
+        }
+
+        glDisable(GL_TEXTURE_2D);
+    glPopMatrix();
+}
+
+// ============================================================
+//  Ajustes das ASAS (fáceis de mexer enquanto encaixamos).
+//  Posição relativa à capivara, rotação e tamanho.
+// ============================================================
+const float ASA_DX     =  0.2f;  // desloca p/ trás (-) ou frente/ombro (+)
+const float ASA_DY     =  0.5f;  // altura sobre as costas
+const float ASA_DZ     =  0.0f;  // profundidade
+const float ASA_ROT_Y  =  90.0f; // gira para alinhar com a capivara
+const float ASA_ROT_Z  = -20.0f; // inclina em diagonal (ponta p/ cima e trás)
+const float ASA_TAM    =  1.6f;  // tamanho-alvo das asas (menor)
+
+// ============================================================
+//  Desenha a capivara no mundo (posição + giro de perfil).
+// ============================================================
+void desenharCapivara() {
+    glPushMatrix();
+        glTranslatef(CAPIVARA_X, CAPIVARA_Y, 0.0f);
+        glRotatef(90.0f, 0.0f, 1.0f, 0.0f);  // de perfil, olhando p/ direita
+        desenharModelo(g_capivara);
+    glPopMatrix();
+}
+
+// ============================================================
+//  Desenha as asas (modelo .obj) sobre as costas da capivara,
+//  com animação de bater usando seno do tempo.
+// ============================================================
+void desenharAsas() {
+    // Ângulo do bater de asas: vai e volta suavemente com o tempo.
+    // GLUT_ELAPSED_TIME = milissegundos desde o início do programa.
+    float tempo = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;  // segundos
+    float anguloBater = sinf(tempo * 7.0f) * 25.0f;       // ±25 graus
+
+    glPushMatrix();
+        // Posiciona as asas sobre a capivara
+        glTranslatef(CAPIVARA_X + ASA_DX, CAPIVARA_Y + ASA_DY, ASA_DZ);
+
+        // IMPORTANTE: o bater vem PRIMEIRO no código para ser aplicado
+        // por ÚLTIMO aos vértices => gira no eixo X do MUNDO, ou seja,
+        // as asas sobem e descem na tela (e não para os lados).
+        glRotatef(anguloBater, 1.0f, 0.0f, 0.0f);
+
+        // Depois orientamos o modelo das asas para encaixar na capivara
+        glRotatef(ASA_ROT_Y, 0.0f, 1.0f, 0.0f);  // alinha com a capivara
+        glRotatef(ASA_ROT_Z, 0.0f, 0.0f, 1.0f);  // inclina em diagonal
+
+        desenharModelo(g_asas);
     glPopMatrix();
 }
 
@@ -200,6 +280,9 @@ void display() {
 
     // Desenha a capivara sobre o cenário
     desenharCapivara();
+
+    // Desenha as asas da capivara (com primitivas)
+    desenharAsas();
 
     // Troca os buffers (double buffering evita flickering)
     glutSwapBuffers();
@@ -310,8 +393,13 @@ int main(int argc, char** argv) {
     // Aplica as configurações iniciais do OpenGL
     inicializarOpenGL();
 
-    // Carrega o modelo 3D da capivara (uma única vez)
-    carregarCapivara();
+    // Carrega o modelo 3D da capivara e sua textura
+    carregarModelo(g_capivara, OBJ_CAPIVARA, 2.8f);
+    carregarTextura(g_capivara, TEX_CAPIVARA);
+
+    // Carrega o modelo das asas (sem textura: cor creme)
+    carregarModelo(g_asas, OBJ_ASAS, ASA_TAM);
+    g_asas.corR = 0.96f; g_asas.corG = 0.95f; g_asas.corB = 0.90f;
 
     // Inicia o loop principal do GLUT (não retorna daqui)
     glutMainLoop();
