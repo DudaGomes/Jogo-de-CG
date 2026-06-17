@@ -8,6 +8,13 @@
 #include <OpenGL/gl.h>
 #include <OpenGL/glu.h>
 #include <cstdlib>   // exit()
+#include <vector>    // std::vector para guardar os vértices
+#include <cstdio>    // printf para mensagens no terminal
+
+// Biblioteca Assimp — carrega o modelo 3D (.obj) da capivara
+#include <assimp/cimport.h>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 // ============================================================
 //  Configurações da janela
@@ -24,6 +31,141 @@ const char* TITULO_JANELA = "Flappy Capivara";
 const float CAMERA_X = 0.0f;   // olha para o centro da cena
 const float CAMERA_Y = 2.0f;   // altura dos olhos
 const float CAMERA_Z = 10.0f;  // distância para a tela do jogo
+
+// ============================================================
+//  Posição da capivara no mundo (plano XY — gameplay 2D).
+//  Por enquanto fica fixa; na Fase 3 ela vai cair/pular.
+// ============================================================
+const float CAPIVARA_X = -2.0f;   // um pouco à esquerda
+const float CAPIVARA_Y =  2.5f;   // altura inicial
+
+// ============================================================
+//  MODELO 3D DA CAPIVARA (carregado de um arquivo .obj)
+//  Usamos a biblioteca Assimp para ler o arquivo e guardamos
+//  o resultado em variáveis globais para desenhar a cada frame.
+// ============================================================
+const char* CAMINHO_MODELO = "Capybara/Capybara.obj";
+
+// Ponteiro para a cena 3D carregada pela Assimp (malha, vértices...)
+const aiScene* g_cena = nullptr;
+
+// Para encaixar a capivara na tela, guardamos o centro e a escala
+// calculados a partir do "bounding box" (caixa que envolve o modelo).
+float g_centroX = 0, g_centroY = 0, g_centroZ = 0;
+float g_escala  = 1.0f;
+
+// ------------------------------------------------------------
+//  Calcula a caixa que envolve o modelo (menor e maior ponto)
+//  para podermos centralizar e redimensionar a capivara.
+// ------------------------------------------------------------
+void calcularBoundingBox() {
+    // Inicializa os extremos com valores bem grandes/pequenos
+    float minX =  1e9, minY =  1e9, minZ =  1e9;
+    float maxX = -1e9, maxY = -1e9, maxZ = -1e9;
+
+    // Percorre todas as malhas e todos os vértices do modelo
+    for (unsigned int m = 0; m < g_cena->mNumMeshes; m++) {
+        const aiMesh* malha = g_cena->mMeshes[m];
+        for (unsigned int v = 0; v < malha->mNumVertices; v++) {
+            aiVector3D p = malha->mVertices[v];
+            if (p.x < minX) minX = p.x;  if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;  if (p.y > maxY) maxY = p.y;
+            if (p.z < minZ) minZ = p.z;  if (p.z > maxZ) maxZ = p.z;
+        }
+    }
+
+    // Centro = meio da caixa
+    g_centroX = (minX + maxX) / 2.0f;
+    g_centroY = (minY + maxY) / 2.0f;
+    g_centroZ = (minZ + maxZ) / 2.0f;
+
+    // Escala = faz a maior dimensão virar ~2 unidades no jogo
+    float tamX = maxX - minX;
+    float tamY = maxY - minY;
+    float tamZ = maxZ - minZ;
+    float maior = tamX;
+    if (tamY > maior) maior = tamY;
+    if (tamZ > maior) maior = tamZ;
+    if (maior > 0) g_escala = 2.8f / maior;  // tamanho da capivara na tela
+}
+
+// ------------------------------------------------------------
+//  Carrega o modelo do disco. Chamado uma única vez no main().
+//  Retorna true se deu certo.
+// ------------------------------------------------------------
+bool carregarCapivara() {
+    // aiImportFile lê o arquivo e já faz pós-processamento:
+    //  - Triangulate: transforma qualquer face em triângulos
+    //  - GenSmoothNormals: gera normais (necessárias p/ iluminação)
+    g_cena = aiImportFile(CAMINHO_MODELO,
+                          aiProcess_Triangulate |
+                          aiProcess_GenSmoothNormals);
+
+    if (!g_cena || g_cena->mNumMeshes == 0) {
+        printf("ERRO: nao consegui carregar '%s'\n", CAMINHO_MODELO);
+        printf("Coloque o arquivo .obj nessa pasta e tente de novo.\n");
+        return false;
+    }
+
+    calcularBoundingBox();
+    printf("Modelo carregado: %u malha(s).\n", g_cena->mNumMeshes);
+    return true;
+}
+
+// ============================================================
+//  Desenha a capivara: percorre cada triângulo do modelo
+//  carregado e envia os vértices/normais para o OpenGL.
+// ============================================================
+void desenharCapivara() {
+    if (!g_cena) return;  // modelo não carregado, não desenha nada
+
+    glPushMatrix();
+
+    // 1) Posiciona a capivara no mundo (plano XY do jogo)
+    glTranslatef(CAPIVARA_X, CAPIVARA_Y, 0.0f);
+
+    // 2) Gira a capivara para ficar de PERFIL, olhando para a direita
+    //    (90° no eixo Y deixa a capivara olhando para a direita, +X)
+    glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+
+    // 3) Aplica a escala calculada (encaixa na tela)
+    glScalef(g_escala, g_escala, g_escala);
+
+    // 4) Centraliza o modelo na origem (tira o deslocamento dele)
+    glTranslatef(-g_centroX, -g_centroY, -g_centroZ);
+
+    // Cor base da capivara (caramelo) — depois a textura/luz refina
+    glColor3f(0.62f, 0.47f, 0.32f);
+
+    // Percorre cada malha do modelo
+    for (unsigned int m = 0; m < g_cena->mNumMeshes; m++) {
+        const aiMesh* malha = g_cena->mMeshes[m];
+
+        // Cada "face" já é um triângulo (por causa do Triangulate)
+        glBegin(GL_TRIANGLES);
+        for (unsigned int f = 0; f < malha->mNumFaces; f++) {
+            const aiFace& face = malha->mFaces[f];
+
+            // Para cada um dos 3 vértices do triângulo
+            for (unsigned int i = 0; i < face.mNumIndices; i++) {
+                unsigned int idx = face.mIndices[i];
+
+                // Normal (direção da superfície) — usada pela iluminação
+                if (malha->HasNormals()) {
+                    aiVector3D n = malha->mNormals[idx];
+                    glNormal3f(n.x, n.y, n.z);
+                }
+
+                // Posição do vértice
+                aiVector3D p = malha->mVertices[idx];
+                glVertex3f(p.x, p.y, p.z);
+            }
+        }
+        glEnd();
+    }
+
+    glPopMatrix();
+}
 
 // ============================================================
 //  Callback de desenho — chamado toda vez que a janela
@@ -49,11 +191,15 @@ void display() {
     // --------------------------------------------------------
     glColor3f(0.3f, 0.6f, 0.2f);  // cor verde-grama
     glBegin(GL_QUADS);
+        glNormal3f(0.0f, 1.0f, 0.0f);  // normal apontando para cima (p/ luz)
         glVertex3f(-10.0f, 0.0f, -5.0f);
         glVertex3f( 10.0f, 0.0f, -5.0f);
         glVertex3f( 10.0f, 0.0f,  5.0f);
         glVertex3f(-10.0f, 0.0f,  5.0f);
     glEnd();
+
+    // Desenha a capivara sobre o cenário
+    desenharCapivara();
 
     // Troca os buffers (double buffering evita flickering)
     glutSwapBuffers();
@@ -114,6 +260,25 @@ void inicializarOpenGL() {
     // Habilita o teste de profundidade (z-buffer):
     // objetos mais longe ficam atrás de objetos mais perto
     glEnable(GL_DEPTH_TEST);
+
+    // -------- Iluminação --------
+    // Sem luz, o modelo aparece como uma silhueta chapada.
+    // Com uma luz, vemos o volume 3D (sombreamento).
+    glEnable(GL_LIGHTING);   // liga o cálculo de iluminação
+    glEnable(GL_LIGHT0);     // liga a luz número 0
+
+    // Posição da luz (x, y, z, w). w=1 => luz pontual nessa posição.
+    GLfloat posicaoLuz[] = { 2.0f, 6.0f, 8.0f, 1.0f };
+    glLightfv(GL_LIGHT0, GL_POSITION, posicaoLuz);
+
+    // Faz glColor3f() definir a cor do material (difusa/ambiente),
+    // assim continuamos pintando os objetos com glColor normalmente.
+    glEnable(GL_COLOR_MATERIAL);
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+
+    // Como escalamos o modelo, as normais precisam ser renormalizadas
+    // para a iluminação ficar correta.
+    glEnable(GL_NORMALIZE);
 }
 
 // ============================================================
@@ -144,6 +309,9 @@ int main(int argc, char** argv) {
 
     // Aplica as configurações iniciais do OpenGL
     inicializarOpenGL();
+
+    // Carrega o modelo 3D da capivara (uma única vez)
+    carregarCapivara();
 
     // Inicia o loop principal do GLUT (não retorna daqui)
     glutMainLoop();

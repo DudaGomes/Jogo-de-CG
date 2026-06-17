@@ -10,8 +10,13 @@ cd "$(dirname "$0")" || exit 1
 
 echo "==> Compilando main.cpp ..."
 
-# Compila o jogo com as flags do OpenGL/GLUT do macOS
+# Compila o jogo com as flags do OpenGL/GLUT (macOS) + Assimp.
+#  -I  : onde achar os headers da Assimp
+#  -L  : onde achar a biblioteca da Assimp
+#  -lassimp : linka a biblioteca da Assimp
 clang++ -std=c++17 main.cpp -o flappy_capivara \
+    -I/opt/homebrew/include \
+    -L/opt/homebrew/lib -lassimp \
     -framework OpenGL \
     -framework GLUT \
     -Wno-deprecated-declarations
