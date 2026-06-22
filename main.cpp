@@ -478,6 +478,46 @@ void desenharInimigo() {
 }
 
 // ============================================================
+//  HUD — texto 2D (placar e mensagens), por cima da cena
+// ============================================================
+void desenharTexto(float x, float y, const char* texto) {
+    glRasterPos2f(x, y);
+    for (const char* c = texto; *c != '\0'; c++)
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+}
+
+void desenharHUD() {
+    // entra em 2D: salva projeção/modelview, desliga luz e profundidade
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);
+    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity();
+    gluOrtho2D(0, LARGURA_JANELA, 0, ALTURA_JANELA);
+    glMatrixMode(GL_MODELVIEW);  glPushMatrix(); glLoadIdentity();
+
+    glColor3f(1.0f, 1.0f, 1.0f);
+    char buf[64];
+
+    if (g_estado == INICIO) {
+        desenharTexto(250, 360, "FLAPPY CAPIVARA");
+        desenharTexto(210, 300, "ESPACO ou clique para comecar");
+    } else if (g_estado == JOGANDO) {
+        snprintf(buf, sizeof(buf), "Pontos: %d", g_pontuacao);
+        desenharTexto(20, ALTURA_JANELA - 30, buf);
+    } else if (g_estado == GAMEOVER) {
+        desenharTexto(300, 360, "GAME OVER");
+        snprintf(buf, sizeof(buf), "Pontuacao: %d", g_pontuacao);
+        desenharTexto(300, 320, buf);
+        desenharTexto(210, 270, "ESPACO ou clique para reiniciar");
+    }
+
+    // restaura 3D
+    glMatrixMode(GL_PROJECTION); glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);  glPopMatrix();
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LIGHTING);
+}
+
+// ============================================================
 //  Callback de desenho — chamado toda vez que a janela
 //  precisa ser redesenhada (pelo glutPostRedisplay ou evento)
 // ============================================================
@@ -519,6 +559,9 @@ void display() {
 
     // Desenha o inimigo (esfera com IA)
     desenharInimigo();
+
+    // HUD por último (texto 2D por cima de tudo)
+    desenharHUD();
 
     // Troca os buffers (double buffering evita flickering)
     glutSwapBuffers();
