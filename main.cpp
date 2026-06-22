@@ -42,8 +42,33 @@ const float CAMERA_Z = 10.0f;  // distância para a tela do jogo
 //  Posição da capivara no mundo (plano XY — gameplay 2D).
 //  Por enquanto fica fixa; na Fase 3 ela vai cair/pular.
 // ============================================================
-const float CAPIVARA_X = -2.0f;   // um pouco à esquerda
-const float CAPIVARA_Y =  2.5f;   // altura inicial
+const float CAPIVARA_X = -2.0f;   // um pouco à esquerda (X fica fixo)
+
+// ============================================================
+//  PARÂMETROS DO JOGO (ajuste fino rodando o jogo)
+// ============================================================
+const float GRAVIDADE         = -15.0f;  // unidades/s² (puxa para baixo)
+const float IMPULSO_PULO       =   6.0f;  // velocidade p/ cima ao pular
+const float ALTURA_TETO        =   6.0f;  // capivara não passa disso
+const float CAPIVARA_Y_INICIAL =   3.0f;  // altura no começo
+
+const int   NUM_CANOS          =   4;     // pares reutilizados
+const float VELOCIDADE_CANO    =   3.0f;  // unidades/s p/ a esquerda
+const float ESPACO_CANOS       =   5.0f;  // distância entre pares
+const float LARGURA_CANO       =   1.2f;  // espessura do cano
+const float ALTURA_BRECHA      =   2.6f;  // tamanho da abertura
+const float CANO_X_INICIAL     =   7.0f;  // x do primeiro cano
+const float CANO_X_RECICLA     =  -8.0f;  // sai de cena à esquerda
+
+const float RAIO_CAPIVARA      =   0.7f;  // p/ colisão (esfera e meia-AABB)
+const float RAIO_INIMIGO       =   0.4f;
+const float RAIO_PERCEPCAO     =   3.0f;  // distância p/ começar a perseguir
+const float VEL_PERSEGUICAO    =   2.2f;  // unidades/s ao perseguir
+const float VEL_VAGUEIO        =   1.2f;  // unidades/s ao vagar
+const float INTERVALO_SORTEIO  =   1.5f;  // s entre sorteios de direção
+
+const float DURACAO_BATIDA     =   0.25f; // s de uma batida de asa
+const float AMPLITUDE_BATIDA   =  35.0f;  // graus de abertura da batida
 
 // ============================================================
 //  STRUCT MODELO — guarda tudo que precisamos de um modelo 3D.
@@ -67,6 +92,31 @@ Modelo g_asas;
 const char* OBJ_CAPIVARA = "models3d/Capybara/Capybara.obj";
 const char* TEX_CAPIVARA = "models3d/Capybara/Capybara_BaseColor.png";
 const char* OBJ_ASAS     = "models3d/wings/wings.obj";
+
+// ============================================================
+//  ESTADO GLOBAL DO JOGO
+// ============================================================
+enum EstadoJogo { INICIO, JOGANDO, GAMEOVER };
+EstadoJogo g_estado = INICIO;
+
+float g_capivaraY       = CAPIVARA_Y_INICIAL;
+float g_velocidadeY     = 0.0f;
+float g_tempoUltimoPulo = -10.0f;   // bem no passado => asas em repouso
+int   g_pontuacao       = 0;
+
+struct Cano { float x; float centroBrecha; bool contado; };
+Cano g_canos[NUM_CANOS];
+
+enum EstadoIA { VAGANDO, PERSEGUINDO };
+struct Inimigo {
+    float x, y;
+    float vx, vy;
+    EstadoIA estadoIA;
+    float tempoProxSorteio;
+};
+Inimigo g_inimigo;
+
+float g_tempoAnterior = 0.0f;       // p/ calcular dt no idle
 
 // ------------------------------------------------------------
 //  Calcula o centro e a escala de UM modelo a partir da caixa
@@ -214,7 +264,7 @@ const float ASA_TAM    =  1.6f;  // tamanho-alvo das asas (menor)
 // ============================================================
 void desenharCapivara() {
     glPushMatrix();
-        glTranslatef(CAPIVARA_X, CAPIVARA_Y, 0.0f);
+        glTranslatef(CAPIVARA_X, g_capivaraY, 0.0f);
         glRotatef(90.0f, 0.0f, 1.0f, 0.0f);  // de perfil, olhando p/ direita
         desenharModelo(g_capivara);
     glPopMatrix();
@@ -232,7 +282,7 @@ void desenharAsas() {
 
     glPushMatrix();
         // Posiciona as asas sobre a capivara
-        glTranslatef(CAPIVARA_X + ASA_DX, CAPIVARA_Y + ASA_DY, ASA_DZ);
+        glTranslatef(CAPIVARA_X + ASA_DX, g_capivaraY + ASA_DY, ASA_DZ);
 
         // IMPORTANTE: o bater vem PRIMEIRO no código para ser aplicado
         // por ÚLTIMO aos vértices => gira no eixo X do MUNDO, ou seja,
