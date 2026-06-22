@@ -11,6 +11,8 @@
 #include <vector>    // std::vector para guardar os vértices
 #include <cstdio>    // printf para mensagens no terminal
 #include <cmath>     // sinf() para a animação de bater as asas
+#include <cassert>   // assert() nos auto-testes das funções puras
+#include <string>    // std::string para ler o argumento --testes
 
 // Biblioteca Assimp — carrega o modelo 3D (.obj) da capivara
 #include <assimp/cimport.h>
@@ -249,6 +251,37 @@ void desenharModelo(const Modelo& mod) {
 }
 
 // ============================================================
+//  FUNÇÕES PURAS DE COLISÃO (sem estado, fáceis de testar)
+// ============================================================
+
+// Sobreposição de duas caixas alinhadas aos eixos (AABB), em 2D (X,Y).
+bool sobreposicaoAABB(float ax0, float ax1, float ay0, float ay1,
+                      float bx0, float bx1, float by0, float by1) {
+    return ax0 <= bx1 && ax1 >= bx0 && ay0 <= by1 && ay1 >= by0;
+}
+
+// Distância euclidiana entre dois pontos no plano de jogo (z = 0).
+float distanciaEsferas(float x0, float y0, float x1, float y1) {
+    float dx = x1 - x0, dy = y1 - y0;
+    return sqrtf(dx*dx + dy*dy);
+}
+
+// Auto-testes das funções puras. Roda com: ./flappy_capivara --testes
+void rodarTestes() {
+    // AABB: caixas que se tocam => true; separadas => false
+    assert( sobreposicaoAABB(0,2, 0,2,  1,3, 1,3) == true);
+    assert( sobreposicaoAABB(0,1, 0,1,  2,3, 2,3) == false);
+    assert( sobreposicaoAABB(0,2, 0,2,  2,4, 2,4) == true);   // encostando
+
+    // Distância: (0,0)->(3,4) = 5
+    assert( distanciaEsferas(0,0, 3,4) > 4.999f &&
+            distanciaEsferas(0,0, 3,4) < 5.001f );
+    assert( distanciaEsferas(1,1, 1,1) == 0.0f );
+
+    printf("TODOS OS TESTES OK\n");
+}
+
+// ============================================================
 //  Ajustes das ASAS (fáceis de mexer enquanto encaixamos).
 //  Posição relativa à capivara, rotação e tamanho.
 // ============================================================
@@ -475,6 +508,12 @@ void inicializarOpenGL() {
 //  Ponto de entrada do programa
 // ============================================================
 int main(int argc, char** argv) {
+    // Modo de teste: roda os auto-testes das funções puras e sai.
+    if (argc > 1 && std::string(argv[1]) == "--testes") {
+        rodarTestes();
+        return 0;
+    }
+
     // Inicializa o GLUT
     glutInit(&argc, argv);
 
