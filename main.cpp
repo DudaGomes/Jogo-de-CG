@@ -588,10 +588,12 @@ void display() {
     glColor3f(0.3f, 0.6f, 0.2f);  // cor verde-grama
     glBegin(GL_QUADS);
         glNormal3f(0.0f, 1.0f, 0.0f);  // normal apontando para cima (p/ luz)
-        glVertex3f(-10.0f, 0.0f, -5.0f);
-        glVertex3f( 10.0f, 0.0f, -5.0f);
-        glVertex3f( 10.0f, 0.0f,  5.0f);
+        // Ordem anti-horária vista de cima => face da frente para cima
+        // (importante p/ o back-face culling não esconder o chão).
         glVertex3f(-10.0f, 0.0f,  5.0f);
+        glVertex3f( 10.0f, 0.0f,  5.0f);
+        glVertex3f( 10.0f, 0.0f, -5.0f);
+        glVertex3f(-10.0f, 0.0f, -5.0f);
     glEnd();
 
     // Desenha os canos (obstáculos)
@@ -741,6 +743,12 @@ void inicializarOpenGL() {
     // Como escalamos o modelo, as normais precisam ser renormalizadas
     // para a iluminação ficar correta.
     glEnable(GL_NORMALIZE);
+
+    // -------- Visibilidade extra --------
+    // Back-face culling: não desenha as faces traseiras dos objetos.
+    // (Se algo sumir/ficar furado no jogo, basta remover estas 2 linhas.)
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
 }
 
 // ============================================================
