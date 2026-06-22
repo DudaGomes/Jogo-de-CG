@@ -337,6 +337,62 @@ void desenharAsas() {
 }
 
 // ============================================================
+//  CANOS (obstáculos) — primitivas glutSolidCube
+// ============================================================
+
+// Sorteia uma altura de brecha dentro de uma faixa segura.
+float sortearBrecha() {
+    // entre 1.6 e 4.4 (deixa folga p/ o chão e o teto)
+    return 1.6f + (rand() % 100) / 100.0f * 2.8f;
+}
+
+void inicializarCanos() {
+    for (int i = 0; i < NUM_CANOS; i++) {
+        g_canos[i].x = CANO_X_INICIAL + i * ESPACO_CANOS;
+        g_canos[i].centroBrecha = sortearBrecha();
+        g_canos[i].contado = false;
+    }
+}
+
+void atualizarCanos(float dt) {
+    for (int i = 0; i < NUM_CANOS; i++) {
+        g_canos[i].x -= VELOCIDADE_CANO * dt;
+
+        // pontua quando o cano passa do X da capivara
+        if (!g_canos[i].contado && g_canos[i].x < CAPIVARA_X) {
+            g_canos[i].contado = true;
+            g_pontuacao++;
+        }
+        // recicla para a direita ao sair de cena
+        if (g_canos[i].x < CANO_X_RECICLA) {
+            g_canos[i].x += NUM_CANOS * ESPACO_CANOS;
+            g_canos[i].centroBrecha = sortearBrecha();
+            g_canos[i].contado = false;
+        }
+    }
+}
+
+// Desenha um bloco (cubo escalado) entre y0 e y1, no x dado.
+void desenharBlocoCano(float x, float y0, float y1) {
+    float altura = y1 - y0;
+    glPushMatrix();
+        glTranslatef(x, (y0 + y1) / 2.0f, 0.0f);
+        glScalef(LARGURA_CANO, altura, LARGURA_CANO);
+        glutSolidCube(1.0f);
+    glPopMatrix();
+}
+
+void desenharCanos() {
+    glColor3f(0.20f, 0.70f, 0.25f);   // verde cano
+    for (int i = 0; i < NUM_CANOS; i++) {
+        float c = g_canos[i].centroBrecha;
+        float meia = ALTURA_BRECHA / 2.0f;
+        desenharBlocoCano(g_canos[i].x, 0.0f, c - meia);            // cano de baixo
+        desenharBlocoCano(g_canos[i].x, c + meia, ALTURA_TETO + 2); // cano de cima
+    }
+}
+
+// ============================================================
 //  Callback de desenho — chamado toda vez que a janela
 //  precisa ser redesenhada (pelo glutPostRedisplay ou evento)
 // ============================================================
@@ -366,6 +422,9 @@ void display() {
         glVertex3f( 10.0f, 0.0f,  5.0f);
         glVertex3f(-10.0f, 0.0f,  5.0f);
     glEnd();
+
+    // Desenha os canos (obstáculos)
+    desenharCanos();
 
     // Desenha a capivara sobre o cenário
     desenharCapivara();
@@ -420,7 +479,8 @@ void reiniciarJogo() {
     g_pontuacao   = 0;
     g_tempoUltimoPulo = -10.0f;
 
-    // inicializarCanos() entra na Task 5; inicializarInimigo() na Task 7.
+    inicializarCanos();
+    // inicializarInimigo() entra na Task 7.
 
     g_estado = JOGANDO;
     pular();   // primeiro impulso ao começar
@@ -457,6 +517,8 @@ void idle() {
         // gravidade + integração da posição
         g_velocidadeY += GRAVIDADE * dt;
         g_capivaraY   += g_velocidadeY * dt;
+
+        atualizarCanos(dt);
 
         // teto: limita (não mata)
         if (g_capivaraY > ALTURA_TETO) {
