@@ -392,6 +392,28 @@ void desenharCanos() {
     }
 }
 
+// Colisão da capivara (caixa AABB) com os canos e o chão.
+void verificarColisoesCanos() {
+    float cx0 = CAPIVARA_X - RAIO_CAPIVARA, cx1 = CAPIVARA_X + RAIO_CAPIVARA;
+    float cy0 = g_capivaraY - RAIO_CAPIVARA, cy1 = g_capivaraY + RAIO_CAPIVARA;
+
+    // chão
+    if (g_capivaraY - RAIO_CAPIVARA <= 0.0f) { g_estado = GAMEOVER; return; }
+
+    float meiaL = LARGURA_CANO / 2.0f;
+    for (int i = 0; i < NUM_CANOS; i++) {
+        float px0 = g_canos[i].x - meiaL, px1 = g_canos[i].x + meiaL;
+        float c = g_canos[i].centroBrecha, meia = ALTURA_BRECHA / 2.0f;
+
+        // cano de baixo: y de 0 até (c - meia)
+        bool bate = sobreposicaoAABB(cx0,cx1, cy0,cy1, px0,px1, 0.0f, c - meia);
+        // cano de cima: y de (c + meia) até o topo
+        bate = bate || sobreposicaoAABB(cx0,cx1, cy0,cy1, px0,px1,
+                                        c + meia, ALTURA_TETO + 2.0f);
+        if (bate) { g_estado = GAMEOVER; return; }
+    }
+}
+
 // ============================================================
 //  Callback de desenho — chamado toda vez que a janela
 //  precisa ser redesenhada (pelo glutPostRedisplay ou evento)
@@ -525,11 +547,8 @@ void idle() {
             g_capivaraY = ALTURA_TETO;
             g_velocidadeY = 0.0f;
         }
-        // chão (vira game over na Task 6; por enquanto só trava p/ testar)
-        if (g_capivaraY < 0.0f) {
-            g_capivaraY = 0.0f;
-            g_velocidadeY = 0.0f;
-        }
+
+        verificarColisoesCanos();   // canos e chão => game over
     }
     glutPostRedisplay();
 }
