@@ -380,18 +380,34 @@ void pular() {
     }
 }
 
+// Reinicia tudo para um novo jogo e começa a jogar.
+void reiniciarJogo() {
+    g_capivaraY   = CAPIVARA_Y_INICIAL;
+    g_velocidadeY = 0.0f;
+    g_pontuacao   = 0;
+    g_tempoUltimoPulo = -10.0f;
+
+    // inicializarCanos() entra na Task 5; inicializarInimigo() na Task 7.
+
+    g_estado = JOGANDO;
+    pular();   // primeiro impulso ao começar
+}
+
+// Ação de ESPAÇO/clique, conforme o estado atual.
+void acaoPrincipal() {
+    if      (g_estado == INICIO)   reiniciarJogo();
+    else if (g_estado == JOGANDO)  pular();
+    else if (g_estado == GAMEOVER) reiniciarJogo();
+}
+
 void teclado(unsigned char tecla, int x, int y) {
     if (tecla == 27) exit(0);          // ESC fecha
-    if (tecla == ' ') {
-        if (g_estado == JOGANDO) pular();
-        // INICIO/GAMEOVER tratados na Task 3 (começar/reiniciar)
-    }
+    if (tecla == ' ') acaoPrincipal();
 }
 
 void mouse(int botao, int estadoBotao, int x, int y) {
-    if (botao == GLUT_LEFT_BUTTON && estadoBotao == GLUT_DOWN) {
-        if (g_estado == JOGANDO) pular();
-    }
+    if (botao == GLUT_LEFT_BUTTON && estadoBotao == GLUT_DOWN)
+        acaoPrincipal();
 }
 
 // ============================================================
@@ -492,8 +508,6 @@ int main(int argc, char** argv) {
     // Carrega o modelo das asas (sem textura: cor creme)
     carregarModelo(g_asas, OBJ_ASAS, ASA_TAM);
     g_asas.corR = 0.96f; g_asas.corG = 0.95f; g_asas.corB = 0.90f;
-
-    g_estado = JOGANDO;  // TEMPORÁRIO (removido na Task 3) — p/ testar a física
 
     // Inicia o loop principal do GLUT (não retorna daqui)
     glutMainLoop();
