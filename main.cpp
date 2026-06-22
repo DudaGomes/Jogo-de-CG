@@ -309,30 +309,76 @@ void desenharCapivara() {
     glPopMatrix();
 }
 
+// ------------------------------------------------------------
+//  Desenha só UMA metade do modelo das asas.
+//  lado = -1 (esquerda, x <= centro) ou +1 (direita, x > centro).
+//  Assim podemos girar cada metade em sentido oposto e o bater
+//  fica simétrico (não vira "gangorra").
+// ------------------------------------------------------------
+void desenharMetadeAsa(int lado) {
+    const Modelo& mod = g_asas;
+    glColor3f(mod.corR, mod.corG, mod.corB);
+    for (unsigned int m = 0; m < mod.cena->mNumMeshes; m++) {
+        const aiMesh* malha = mod.cena->mMeshes[m];
+        glBegin(GL_TRIANGLES);
+        for (unsigned int f = 0; f < malha->mNumFaces; f++) {
+            const aiFace& face = malha->mFaces[f];
+            // centro X da face (média dos vértices) decide o lado
+            float cx = 0.0f;
+            for (unsigned int i = 0; i < face.mNumIndices; i++)
+                cx += malha->mVertices[face.mIndices[i]].x;
+            cx /= face.mNumIndices;
+            bool ehDireita = (cx > mod.centroX);
+            if ((lado > 0) != ehDireita) continue;   // pula o lado errado
+
+            for (unsigned int i = 0; i < face.mNumIndices; i++) {
+                unsigned int idx = face.mIndices[i];
+                if (malha->HasNormals()) {
+                    aiVector3D n = malha->mNormals[idx];
+                    glNormal3f(n.x, n.y, n.z);
+                }
+                aiVector3D p = malha->mVertices[idx];
+                glVertex3f(p.x, p.y, p.z);
+            }
+        }
+        glEnd();
+    }
+}
+
 // ============================================================
-//  Desenha as asas (modelo .obj) sobre as costas da capivara,
-//  com animação de bater usando seno do tempo.
+//  Desenha as asas sobre as costas da capivara.
+//  A batida é DISPARADA PELO PULO (animação one-shot): logo após
+//  um pulo as asas dão uma batida e voltam ao repouso.
 // ============================================================
 void desenharAsas() {
-    // Ângulo do bater de asas: vai e volta suavemente com o tempo.
-    // GLUT_ELAPSED_TIME = milissegundos desde o início do programa.
-    float tempo = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;  // segundos
-    float anguloBater = sinf(tempo * 7.0f) * 25.0f;       // ±25 graus
+    // Batida única disparada pelo pulo.
+    float agora = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
+    float t = agora - g_tempoUltimoPulo;
+    float anguloAsa = 0.0f;                        // repouso
+    if (t < DURACAO_BATIDA) {
+        float prog = t / DURACAO_BATIDA;           // 0 -> 1
+        anguloAsa = sinf(prog * 3.14159f) * AMPLITUDE_BATIDA;  // sobe e volta
+    }
 
     glPushMatrix();
-        // Posiciona as asas sobre a capivara
+        // posiciona o par nas costas da capivara e orienta o modelo
         glTranslatef(CAPIVARA_X + ASA_DX, g_capivaraY + ASA_DY, ASA_DZ);
+        glRotatef(ASA_ROT_Y, 0.0f, 1.0f, 0.0f);
+        glRotatef(ASA_ROT_Z, 0.0f, 0.0f, 1.0f);
+        glScalef(g_asas.escala, g_asas.escala, g_asas.escala);
+        glTranslatef(-g_asas.centroX, -g_asas.centroY, -g_asas.centroZ);
 
-        // IMPORTANTE: o bater vem PRIMEIRO no código para ser aplicado
-        // por ÚLTIMO aos vértices => gira no eixo X do MUNDO, ou seja,
-        // as asas sobem e descem na tela (e não para os lados).
-        glRotatef(anguloBater, 1.0f, 0.0f, 0.0f);
+        // asa direita: gira +angulo em torno de Z (eixo da raiz)
+        glPushMatrix();
+            glRotatef( anguloAsa, 0.0f, 0.0f, 1.0f);
+            desenharMetadeAsa(+1);
+        glPopMatrix();
 
-        // Depois orientamos o modelo das asas para encaixar na capivara
-        glRotatef(ASA_ROT_Y, 0.0f, 1.0f, 0.0f);  // alinha com a capivara
-        glRotatef(ASA_ROT_Z, 0.0f, 0.0f, 1.0f);  // inclina em diagonal
-
-        desenharModelo(g_asas);
+        // asa esquerda: gira -angulo (sentido oposto => bater simétrico)
+        glPushMatrix();
+            glRotatef(-anguloAsa, 0.0f, 0.0f, 1.0f);
+            desenharMetadeAsa(-1);
+        glPopMatrix();
     glPopMatrix();
 }
 
