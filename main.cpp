@@ -263,9 +263,15 @@ const float ASA_TAM    =  1.6f;  // tamanho-alvo das asas (menor)
 //  Desenha a capivara no mundo (posição + giro de perfil).
 // ============================================================
 void desenharCapivara() {
+    // Inclina conforme a velocidade: nariz p/ cima subindo, p/ baixo caindo.
+    float inclina = g_velocidadeY * 4.0f;          // graus (proporcional)
+    if (inclina >  30.0f) inclina =  30.0f;
+    if (inclina < -45.0f) inclina = -45.0f;
+
     glPushMatrix();
         glTranslatef(CAPIVARA_X, g_capivaraY, 0.0f);
-        glRotatef(90.0f, 0.0f, 1.0f, 0.0f);  // de perfil, olhando p/ direita
+        glRotatef(90.0f, 0.0f, 1.0f, 0.0f);   // de perfil, olhando p/ direita
+        glRotatef(inclina, 0.0f, 0.0f, 1.0f); // inclinação do voo
         desenharModelo(g_capivara);
     glPopMatrix();
 }
@@ -366,11 +372,26 @@ void reshape(int largura, int altura) {
 // ============================================================
 //  Callback de teclado — teclas especiais e normais
 // ============================================================
-void teclado(unsigned char tecla, int x, int y) {
-    if (tecla == 27) {  // ESC — fecha o jogo
-        exit(0);
+// Dá o impulso de pulo (só faz efeito enquanto está jogando).
+void pular() {
+    if (g_estado == JOGANDO) {
+        g_velocidadeY = IMPULSO_PULO;
+        g_tempoUltimoPulo = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
     }
-    // Futuramente: espaço/clique para a capivara pular
+}
+
+void teclado(unsigned char tecla, int x, int y) {
+    if (tecla == 27) exit(0);          // ESC fecha
+    if (tecla == ' ') {
+        if (g_estado == JOGANDO) pular();
+        // INICIO/GAMEOVER tratados na Task 3 (começar/reiniciar)
+    }
+}
+
+void mouse(int botao, int estadoBotao, int x, int y) {
+    if (botao == GLUT_LEFT_BUTTON && estadoBotao == GLUT_DOWN) {
+        if (g_estado == JOGANDO) pular();
+    }
 }
 
 // ============================================================
@@ -378,7 +399,27 @@ void teclado(unsigned char tecla, int x, int y) {
 //  Aqui faremos a atualização da física no futuro.
 // ============================================================
 void idle() {
-    // Por enquanto só pede redesenho contínuo
+    float agora = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
+    float dt = agora - g_tempoAnterior;
+    g_tempoAnterior = agora;
+    if (dt > 0.05f) dt = 0.05f;   // evita "pulo" grande se travar
+
+    if (g_estado == JOGANDO) {
+        // gravidade + integração da posição
+        g_velocidadeY += GRAVIDADE * dt;
+        g_capivaraY   += g_velocidadeY * dt;
+
+        // teto: limita (não mata)
+        if (g_capivaraY > ALTURA_TETO) {
+            g_capivaraY = ALTURA_TETO;
+            g_velocidadeY = 0.0f;
+        }
+        // chão (vira game over na Task 6; por enquanto só trava p/ testar)
+        if (g_capivaraY < 0.0f) {
+            g_capivaraY = 0.0f;
+            g_velocidadeY = 0.0f;
+        }
+    }
     glutPostRedisplay();
 }
 
@@ -438,6 +479,7 @@ int main(int argc, char** argv) {
     glutDisplayFunc(display);    // redesenho
     glutReshapeFunc(reshape);    // redimensionamento
     glutKeyboardFunc(teclado);   // teclado
+    glutMouseFunc(mouse);        // clique do mouse
     glutIdleFunc(idle);          // loop ocioso
 
     // Aplica as configurações iniciais do OpenGL
@@ -450,6 +492,8 @@ int main(int argc, char** argv) {
     // Carrega o modelo das asas (sem textura: cor creme)
     carregarModelo(g_asas, OBJ_ASAS, ASA_TAM);
     g_asas.corR = 0.96f; g_asas.corG = 0.95f; g_asas.corB = 0.90f;
+
+    g_estado = JOGANDO;  // TEMPORÁRIO (removido na Task 3) — p/ testar a física
 
     // Inicia o loop principal do GLUT (não retorna daqui)
     glutMainLoop();
