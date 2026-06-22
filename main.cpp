@@ -415,6 +415,69 @@ void verificarColisoesCanos() {
 }
 
 // ============================================================
+//  INIMIGO com IA (Máquina de Estados Finitos: vagar/perseguir)
+// ============================================================
+void inicializarInimigo() {
+    g_inimigo.x = 4.0f;
+    g_inimigo.y = 3.0f;
+    g_inimigo.vx = -VEL_VAGUEIO;
+    g_inimigo.vy = 0.0f;
+    g_inimigo.estadoIA = VAGANDO;
+    g_inimigo.tempoProxSorteio = 0.0f;
+}
+
+void atualizarInimigo(float dt) {
+    // distância até a capivara (mesma fórmula da colisão por esfera)
+    float D = distanciaEsferas(g_inimigo.x, g_inimigo.y, CAPIVARA_X, g_capivaraY);
+
+    // transição de estado (IA reativa)
+    g_inimigo.estadoIA = (D <= RAIO_PERCEPCAO) ? PERSEGUINDO : VAGANDO;
+
+    if (g_inimigo.estadoIA == PERSEGUINDO) {
+        // move em direção à capivara
+        float dx = CAPIVARA_X - g_inimigo.x;
+        float dy = g_capivaraY - g_inimigo.y;
+        float n = sqrtf(dx*dx + dy*dy);
+        if (n > 0.0001f) {
+            g_inimigo.x += (dx / n) * VEL_PERSEGUICAO * dt;
+            g_inimigo.y += (dy / n) * VEL_PERSEGUICAO * dt;
+        }
+    } else {
+        // VAGANDO: sorteia nova direção de tempos em tempos
+        float agora = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
+        if (agora >= g_inimigo.tempoProxSorteio) {
+            float ang = (rand() % 360) * 3.14159f / 180.0f;
+            g_inimigo.vx = cosf(ang) * VEL_VAGUEIO;
+            g_inimigo.vy = sinf(ang) * VEL_VAGUEIO;
+            g_inimigo.tempoProxSorteio = agora + INTERVALO_SORTEIO;
+        }
+        g_inimigo.x += g_inimigo.vx * dt;
+        g_inimigo.y += g_inimigo.vy * dt;
+
+        // mantém dentro da área de jogo (rebatendo nas bordas)
+        if (g_inimigo.x < 0.0f) { g_inimigo.x = 0.0f; g_inimigo.vx = -g_inimigo.vx; }
+        if (g_inimigo.x > 6.0f) { g_inimigo.x = 6.0f; g_inimigo.vx = -g_inimigo.vx; }
+        if (g_inimigo.y < 1.0f) { g_inimigo.y = 1.0f; g_inimigo.vy = -g_inimigo.vy; }
+        if (g_inimigo.y > ALTURA_TETO) { g_inimigo.y = ALTURA_TETO; g_inimigo.vy = -g_inimigo.vy; }
+    }
+}
+
+void verificarColisaoInimigo() {
+    float D = distanciaEsferas(g_inimigo.x, g_inimigo.y, CAPIVARA_X, g_capivaraY);
+    if (D <= RAIO_INIMIGO + RAIO_CAPIVARA) g_estado = GAMEOVER;
+}
+
+void desenharInimigo() {
+    glPushMatrix();
+        glTranslatef(g_inimigo.x, g_inimigo.y, 0.0f);
+        // amarelo vagando, vermelho perseguindo (deixa a IA visível)
+        if (g_inimigo.estadoIA == PERSEGUINDO) glColor3f(0.9f, 0.2f, 0.1f);
+        else                                   glColor3f(0.95f, 0.85f, 0.1f);
+        glutSolidSphere(RAIO_INIMIGO, 16, 16);
+    glPopMatrix();
+}
+
+// ============================================================
 //  Callback de desenho — chamado toda vez que a janela
 //  precisa ser redesenhada (pelo glutPostRedisplay ou evento)
 // ============================================================
@@ -451,8 +514,11 @@ void display() {
     // Desenha a capivara sobre o cenário
     desenharCapivara();
 
-    // Desenha as asas da capivara (com primitivas)
+    // Desenha as asas da capivara
     desenharAsas();
+
+    // Desenha o inimigo (esfera com IA)
+    desenharInimigo();
 
     // Troca os buffers (double buffering evita flickering)
     glutSwapBuffers();
@@ -502,7 +568,7 @@ void reiniciarJogo() {
     g_tempoUltimoPulo = -10.0f;
 
     inicializarCanos();
-    // inicializarInimigo() entra na Task 7.
+    inicializarInimigo();
 
     g_estado = JOGANDO;
     pular();   // primeiro impulso ao começar
@@ -549,6 +615,9 @@ void idle() {
         }
 
         verificarColisoesCanos();   // canos e chão => game over
+
+        atualizarInimigo(dt);       // IA: vagar / perseguir
+        verificarColisaoInimigo();  // encostar no inimigo => game over
     }
     glutPostRedisplay();
 }
