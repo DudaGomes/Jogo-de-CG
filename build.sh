@@ -20,11 +20,16 @@ echo "==> Compilando main.cpp ..."
 #  -I  : onde achar os headers da Assimp
 #  -L  : onde achar a biblioteca da Assimp
 #  -lassimp : linka a biblioteca da Assimp
+#  miniaudio (áudio) precisa dos frameworks de áudio do macOS + pthread.
 /usr/bin/clang++ -std=c++17 main.cpp -o flappy_capivara \
     -I/opt/homebrew/include \
     -L/opt/homebrew/lib -lassimp \
     -framework OpenGL \
     -framework GLUT \
+    -framework CoreFoundation \
+    -framework CoreAudio \
+    -framework AudioToolbox \
+    -lpthread \
     -Wno-deprecated-declarations
 
 # $? guarda o código de saída do clang++ (0 = sucesso)
