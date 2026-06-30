@@ -76,11 +76,10 @@ const float CANO_X_INICIAL     =   7.0f;  // x do primeiro cano
 const float CANO_X_RECICLA     =  -8.0f;  // sai de cena à esquerda
 
 const float RAIO_CAPIVARA      =   0.45f; // p/ colisão (esfera e meia-AABB)
-const float RAIO_INIMIGO       =   0.4f;
-const float RAIO_PERCEPCAO     =   3.0f;  // distância p/ começar a perseguir
-const float VEL_PERSEGUICAO    =   2.2f;  // unidades/s ao perseguir
-const float VEL_VAGUEIO        =   1.2f;  // unidades/s ao vagar
-const float INTERVALO_SORTEIO  =   1.5f;  // s entre sorteios de direção
+// Aliada (abelha pilotada por IA): fica à frente da capivara e bate asa
+// sozinha pra passar pelo centro das brechas (piloto automático).
+const float ABELHA_X       = CAPIVARA_X + 2.5f;  // X fixo, à frente da capivara
+const float ABELHA_IMPULSO =   4.5f;             // "batida de asa" da aliada
 
 const float DURACAO_BATIDA     =   0.25f; // s de uma batida de asa
 const float AMPLITUDE_BATIDA   =  35.0f;  // graus da batida do pulo
@@ -173,14 +172,13 @@ int   g_pontuacao       = 0;
 struct Cano { float x; float centroBrecha; bool contado; };
 Cano g_canos[NUM_CANOS];
 
-enum EstadoIA { VAGANDO, PERSEGUINDO };
-struct Inimigo {
-    float x, y;
-    float vx, vy;
-    EstadoIA estadoIA;
-    float tempoProxSorteio;
+// A aliada é uma abelha pilotada por IA. X é fixo (ABELHA_X); ela só varia
+// em Y, caindo com gravidade e batendo asa sozinha (igual à capivara).
+struct Aliada {
+    float y;    // altura atual
+    float vy;   // velocidade vertical
 };
-Inimigo g_inimigo;
+Aliada g_aliada;
 
 float g_tempoAnterior = 0.0f;       // p/ calcular dt no idle
 
@@ -1070,41 +1068,39 @@ void verificarColisoesCanos() {
 }
 
 // ============================================================
-//  INIMIGO com IA (Máquina de Estados Finitos: vagar/perseguir)
+//  ALIADA com IA (piloto automático: navega as brechas)
+//  A abelha cai com gravidade e bate asa sozinha mirando no centro
+//  da próxima brecha — sempre à frente da capivara, como um guia.
 // ============================================================
-void inicializarInimigo() {
-    g_inimigo.x = CAPIVARA_X + 1.5f;
-    g_inimigo.y = 3.0f;
-    g_inimigo.vx = 0.0f;
-    g_inimigo.vy = 0.0f;
-    g_inimigo.estadoIA = VAGANDO;
-    g_inimigo.tempoProxSorteio = 0.0f;
+void inicializarAliada() {
+    g_aliada.y  = CAPIVARA_Y_INICIAL;
+    g_aliada.vy = 0.0f;
 }
 
-// O "carrapato" FOGE da capivara: ele fica por perto, mas sempre se
-// afasta na vertical para o lado oposto da capivara. Como a capivara
-// tem X fixo, ela nunca o alcança — só fica tentando.
-void atualizarInimigo(float dt) {
-    float agora = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
+void atualizarAliada(float dt) {
+    // 1) Acha o cano que a abelha está entrando ou logo à frente (em X)
+    //    e mira no CENTRO da brecha desse cano.
+    float melhorDist = 1e9f;
+    float alvoY = g_aliada.y;                 // sem cano por perto: mantém
+    for (int i = 0; i < NUM_CANOS; i++) {
+        float d = g_canos[i].x - ABELHA_X;    // d > 0 => cano à frente
+        if (d > -LARGURA_CANO && d < melhorDist) {
+            melhorDist = d;
+            alvoY = g_canos[i].centroBrecha;
+        }
+    }
 
-    // Foge para o lado vertical oposto ao da capivara, com leve oscilação.
-    float ladoFuga = (g_inimigo.y >= g_capivaraY) ? +1.0f : -1.0f;
-    float alvoY = g_capivaraY + ladoFuga * 2.0f + sinf(agora * 3.0f) * 0.5f;
+    // 2) Física igual à da capivara: gravidade + batida automática.
+    g_aliada.vy += GRAVIDADE * dt;
+    if (g_aliada.y < alvoY) g_aliada.vy = ABELHA_IMPULSO;  // bate asa pra subir
+    g_aliada.y += g_aliada.vy * dt;
 
-    // Aproxima suavemente do alvo (movimento orgânico de fuga).
-    float k = 3.0f * dt;
-    if (k > 1.0f) k = 1.0f;
-    g_inimigo.y += (alvoY - g_inimigo.y) * k;
-
-    // X: vagueia um pouco à frente da capivara (nunca encosta).
-    g_inimigo.x = CAPIVARA_X + 1.6f + sinf(agora * 1.3f) * 0.8f;
-
-    // Limites verticais da área de jogo
-    if (g_inimigo.y < 1.0f) g_inimigo.y = 1.0f;
-    if (g_inimigo.y > ALTURA_TETO) g_inimigo.y = ALTURA_TETO;
+    // 3) Segurança: não deixa sair da área de jogo.
+    if (g_aliada.y < 0.5f)        { g_aliada.y = 0.5f;        g_aliada.vy = 0.0f; }
+    if (g_aliada.y > ALTURA_TETO) { g_aliada.y = ALTURA_TETO; g_aliada.vy = 0.0f; }
 }
 
-void desenharInimigo() {
+void desenharAliada() {
     // Zumbido: pequena oscilação rápida na vertical (parece voo de abelha).
     float agora = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
     float zumbido = sinf(agora * 25.0f) * 0.04f;
@@ -1119,7 +1115,7 @@ void desenharInimigo() {
     float anguloY = olhar * -90.0f;            // perfil -> câmera -> perfil
 
     glPushMatrix();
-        glTranslatef(g_inimigo.x, g_inimigo.y + zumbido, 0.0f);
+        glTranslatef(ABELHA_X, g_aliada.y + zumbido, 0.0f);
         glRotatef(anguloY, 0.0f, 1.0f, 0.0f);
         desenharModelo(g_abelha);
     glPopMatrix();
@@ -1575,7 +1571,7 @@ void display() {
 
     // Inimigo só aparece quando o jogo já começou
     if (g_estado != INICIO) {
-        desenharInimigo();
+        desenharAliada();
     }
 
     // Partículas por cima da cena 3D
@@ -1638,7 +1634,7 @@ void reiniciarJogo() {
     inicializarCanos();
     inicializarGrama();
     inicializarArvores();
-    inicializarInimigo();
+    inicializarAliada();
 
     g_estado = JOGANDO;
     pular();   // primeiro impulso ao começar
@@ -1695,7 +1691,7 @@ void idle() {
 
         verificarColisoesCanos();   // canos e chão => game over
 
-        atualizarInimigo(dt);       // abelha foge (não mata mais)
+        atualizarAliada(dt);        // piloto automático: navega as brechas
     }
 
     // Efeitos continuam animando mesmo no game over:
