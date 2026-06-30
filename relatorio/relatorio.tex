@@ -1,0 +1,289 @@
+% ============================================================
+%  RELATÓRIO TÉCNICO — Template SBC
+%  Como usar (Overleaf, sem instalar nada):
+%   1. Acesse overleaf.com > New Project > Templates > procure "SBC"
+%      (template "SBC Conferences" — ele já vem com o sbc-template.sty).
+%   2. Apague o conteúdo do main.tex de exemplo e cole ESTE arquivo.
+%   3. Suba suas imagens (prints do jogo) em Upload e ajuste os \includegraphics.
+%   4. Preencha tudo marcado com  %% PREENCHER %%  e clique em Recompile.
+%
+%  Procure por  PREENCHER  para achar rapidinho o que falta.
+% ============================================================
+
+\documentclass[12pt]{article}
+
+\usepackage{sbc-template}
+\usepackage{graphicx,url}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+
+\sloppy
+
+\title{Flappy Capivara: uma reinterpretação 3D do Flappy Bird em OpenGL}
+
+\author{Eduardo Melo de Carvalho\inst{1}, Maria Eduarda Farias Gomes\inst{1}}
+
+\address{Departamento de Computação -- Centro de Ciências da Natureza\\
+  Universidade Federal do Piauí (UFPI) -- Teresina, PI -- Brasil\\
+  Matrículas: %% PREENCHER: matricula do Eduardo, matricula da Maria Eduarda
+  \email{eduardo.melo@ufpi.edu.br, maria.farias@ufpi.edu.br}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This paper presents \emph{Flappy Capivara}, a 3D reinterpretation of the
+classic 2D game \emph{Flappy Bird} developed in C++ with OpenGL and GLUT.
+The player controls a capybara that must fly through gaps between pipes,
+avoiding the pipes and the ground, while an allied bee, driven by an
+autopilot artificial intelligence, flies ahead and navigates the gaps on
+its own. The project applies core Computer Graphics techniques: a 3D
+perspective camera, lighting and shading, textures, visibility through
+depth buffer and back-face culling, 3D model loading, collision detection
+with bounding volumes, and a reactive artificial intelligence. We describe
+the implemented methods, present results, and discuss the main challenges.
+\end{abstract}
+
+\begin{resumo}
+Este artigo apresenta o \emph{Flappy Capivara}, uma reinterpretação em 3D
+do jogo clássico 2D \emph{Flappy Bird}, desenvolvido em C++ com OpenGL e
+GLUT. O jogador controla uma capivara que deve voar pelas brechas entre
+canos, desviando dos canos e do chão, enquanto uma abelha aliada, guiada por
+uma IA de piloto automático, voa à frente e atravessa as brechas sozinha.
+O projeto aplica técnicas fundamentais de
+Computação Gráfica: câmera 3D em perspectiva, iluminação e sombreamento,
+texturas, visibilidade por \emph{buffer} de profundidade e \emph{back-face
+culling}, carregamento de modelos 3D, detecção de colisão por volumes
+envolventes e uma inteligência artificial reativa. Descrevemos os métodos
+implementados, apresentamos os resultados e discutimos os principais
+desafios.
+\end{resumo}
+
+% ============================================================
+\section{Introdução}
+% ============================================================
+
+Jogos clássicos em duas dimensões são um excelente ponto de partida para o
+estudo de Computação Gráfica, pois permitem explorar técnicas de
+renderização tridimensional sobre uma jogabilidade simples e bem conhecida.
+Seguindo essa ideia, este trabalho reinterpreta o jogo \emph{Flappy Bird}
+em três dimensões, substituindo o pássaro original por uma \textbf{capivara}
+--- animal símbolo da fauna brasileira --- e dando ao cenário um visual 3D.
+
+No \emph{Flappy Capivara}, a câmera observa a cena em perspectiva, enquanto
+a jogabilidade permanece no plano 2D (eixos $X$ e $Y$), atendendo ao
+requisito de um jogo 3D com jogabilidade ao menos em 2D. A capivara cai
+continuamente por ação da gravidade e sobe a cada batida de asa (acionada
+pelo jogador). O objetivo é atravessar o maior número possível de pares de
+canos sem colidir.
+
+Além de reproduzir a mecânica original, o jogo adiciona elementos
+inexistentes no clássico: uma \textbf{abelha aliada com inteligência
+artificial} (piloto automático),
+um \textbf{cenário com vegetação e profundidade}, \textbf{partículas},
+\textbf{áudio} e \textbf{dificuldade progressiva}. Os objetivos do trabalho
+são: (i) construir um jogo 3D funcional em OpenGL/GLUT; (ii) aplicar
+detecção de colisões, inteligência artificial e os recursos de iluminação,
+sombreamento, textura e visibilidade; e (iii) integrar bibliotecas
+complementares de modelos 3D, áudio e fontes.
+
+% ============================================================
+\section{Materiais}
+% ============================================================
+
+O jogo foi desenvolvido em \textbf{C++} e compilado com o \emph{clang}
+(macOS). As principais ferramentas e bibliotecas, com suas finalidades,
+são:
+
+\begin{itemize}
+  \item \textbf{OpenGL} --- API de renderização gráfica (geometria,
+        iluminação, textura, \emph{buffer} de profundidade).
+  \item \textbf{GLUT} --- criação de janela, contexto de renderização e
+        tratamento de eventos de teclado, \emph{mouse} e \emph{idle}.
+  \item \textbf{Assimp} --- carregamento de modelos 3D nos formatos
+        \texttt{.obj} e \texttt{.glb}.
+  \item \textbf{stb\_image} --- leitura de imagens PNG usadas como textura.
+  \item \textbf{stb\_truetype} + fonte \textbf{Pixelify Sans} --- renderização
+        do texto do HUD (placar e mensagens).
+  \item \textbf{miniaudio} --- reprodução dos efeitos sonoros.
+  \item \textbf{Blender} --- modelagem e exportação de \emph{assets} 3D
+        (por exemplo, o cano com borda separada, em formato \texttt{.glb}).
+\end{itemize}
+
+Os modelos da capivara e demais objetos foram obtidos em repositórios
+livres (por exemplo, \emph{poly.pizza}) e, quando necessário, refeitos no
+Blender para se adequarem ao jogo.
+
+% ============================================================
+\section{Métodos}
+% ============================================================
+
+\subsection{Janela, câmera e projeção}
+A janela e o contexto são criados com GLUT em \emph{double buffering}. A
+projeção é em \textbf{perspectiva} (\texttt{gluPerspective}), o que dá a
+sensação de profundidade. A câmera é posicionada com \texttt{gluLookAt},
+levemente afastada no eixo $Z$, observando o plano de jogo.
+
+\subsection{Iluminação e sombreamento}
+A cena utiliza uma fonte de luz pontual (\texttt{GL\_LIGHT0}). O
+sombreamento é suave (\emph{Gouraud}), com normais por vértice calculadas no
+carregamento dos modelos. O recurso \texttt{GL\_COLOR\_MATERIAL} permite
+definir o material dos objetos diretamente pela cor, e \texttt{GL\_NORMALIZE}
+mantém a iluminação correta mesmo quando os modelos são escalados.
+
+\subsection{Texturas}
+A capivara é texturizada a partir de uma imagem PNG (\emph{base color})
+carregada com \emph{stb\_image} e mapeada pelas coordenadas de textura do
+modelo. Modelos em \texttt{.glb}/\texttt{.obj} podem ainda ser coloridos
+pelas cores definidas em seus materiais.
+
+\subsection{Visibilidade}
+A visibilidade correta entre objetos é garantida pelo \textbf{\emph{buffer}
+de profundidade} (\emph{z-buffer}, \texttt{GL\_DEPTH\_TEST}). Como recurso
+adicional, habilita-se o \textbf{\emph{back-face culling}}
+(\texttt{GL\_CULL\_FACE}), que descarta as faces traseiras dos objetos,
+reduzindo o custo de desenho.
+
+\subsection{Carregamento de modelos 3D}
+A função de carregamento usa o Assimp para importar a malha, triangular as
+faces e gerar normais suaves. Em seguida, calcula-se a \emph{caixa
+envolvente} (\emph{bounding box}) de cada modelo para normalizar seu tamanho
+e centro, padronizando a escala dos objetos no mundo.
+
+\subsection{Canos: corpo e borda}
+Cada par de canos é desenhado a partir de um modelo \texttt{.glb} criado no
+Blender. Para encaixar a brecha em alturas variadas, o \textbf{corpo} do
+cano (um cilindro liso) é esticado verticalmente, enquanto a \textbf{borda}
+(\emph{rim}) é desenhada com escala \textbf{uniforme} na boca do cano. Essa
+separação evita a distorção que ocorria quando o modelo inteiro era
+esticado.
+
+\subsection{Física e controle}
+O movimento vertical usa integração de Euler semi-implícita: a cada quadro,
+a velocidade recebe a aceleração da gravidade e a posição é atualizada pela
+velocidade, usando o tempo decorrido ($\Delta t$) para independência da taxa
+de quadros. A batida de asa (tecla \emph{espaço} ou clique) aplica um
+impulso vertical e dispara a animação das asas.
+
+\subsection{Detecção de colisões}
+A colisão usa \textbf{caixas envolventes alinhadas aos eixos} (AABB): a
+capivara é aproximada por uma caixa e cada cano por outra; há colisão quando
+as caixas se sobrepõem simultaneamente nos eixos $X$ e $Y$. O chão é tratado
+como um limite inferior em $Y$. Qualquer colisão encerra a partida. O teste é
+isolado em uma função pura (\texttt{sobreposicaoAABB}), validada por testes
+automatizados. O projeto também implementa o cálculo de distância entre
+centros, $D=\sqrt{(x_1-x_0)^2+(y_1-y_0)^2}$, base da colisão por esferas
+envolventes, igualmente coberto por testes.
+
+\subsection{Inteligência artificial}
+Uma \textbf{abelha aliada} é controlada por uma IA de \textbf{piloto
+automático} que \emph{joga sozinha}. Ela permanece numa posição fixa à
+frente da capivara e, a cada quadro: (i) identifica o próximo cano em seu
+caminho; (ii) adota como alvo o \emph{centro da brecha} desse cano; e (iii)
+aplica a mesma física da capivara --- gravidade somada a uma ``batida de
+asa'' automática sempre que está abaixo do alvo. Assim, a aliada navega
+pelas brechas como um jogador e funciona como um \textbf{guia}, mostrando o
+caminho seguro à frente. Trata-se de uma \textbf{agente reativa}: percebe o
+ambiente (a posição da próxima brecha) e age por regras simples, o que a
+torna fácil de explicar e robusta em todas as dificuldades.
+
+\subsection{Modos de dificuldade}
+O jogo oferece \textbf{três modos}, escolhidos pelas teclas 1, 2 e 3 na tela
+inicial. No \textbf{Fácil}, a brecha entre os canos e a velocidade são fixas.
+No \textbf{Médio}, a brecha \emph{encolhe} conforme a pontuação --- até um
+\emph{limite mínimo} que mantém o jogo jogável --- e a velocidade é fixa. No
+\textbf{Difícil}, a brecha encolhe \emph{e} a velocidade aumenta com a
+pontuação (também com tetos). Assim, a mesma base de jogo cobre desde um
+treino tranquilo até um desafio progressivo.
+
+\subsection{Demais recursos}
+O jogo inclui ainda: um \textbf{sistema de partículas} (poeira, brilho e
+explosão) desenhado com \emph{billboards} e \emph{blending}; um \textbf{HUD}
+com placar e mensagens renderizado por \emph{stb\_truetype}; uma
+\textbf{máquina de estados do jogo} (início, jogando, fim de jogo); e
+\textbf{áudio} via \emph{miniaudio}.
+
+% ============================================================
+\section{Resultados e Discussão}
+% ============================================================
+
+O jogo executa de forma fluida, com a capivara respondendo ao comando do
+jogador, os canos rolando e reciclando, o placar incrementando a cada cano
+ultrapassado e a abelha aliada navegando as brechas à frente da capivara.
+As Figuras~\ref{fig:inicio}, \ref{fig:jogo} e \ref{fig:gameover} mostram,
+respectivamente, a tela inicial com a escolha de dificuldade, o jogo em
+execução e a tela de fim de jogo.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=.7\textwidth]{tela_inicial.png}
+  \caption{Tela inicial: título e escolha de dificuldade (teclas 1/2/3).}
+  \label{fig:inicio}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=.7\textwidth]{jogando.png}
+  \caption{Jogo em execução: capivara, canos com borda, abelha aliada e placar.}
+  \label{fig:jogo}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=.7\textwidth]{game_over.png}
+  \caption{Tela de fim de jogo com a pontuação final.}
+  \label{fig:gameover}
+\end{figure}
+
+A combinação de iluminação, sombreamento suave e textura confere volume aos
+objetos, enquanto o \emph{z-buffer} e o \emph{back-face culling} garantem a
+visibilidade correta. A colisão por AABB mostrou-se simples e eficaz para a
+jogabilidade. A IA de piloto automático da abelha aliada demonstra o
+requisito de inteligência artificial de forma marcante, pois ela
+efetivamente \emph{joga} o jogo, navegando as brechas à frente do jogador.
+
+% ============================================================
+\section{Conclusão}
+% ============================================================
+
+O desenvolvimento do \emph{Flappy Capivara} permitiu aplicar, de forma
+integrada, os principais conceitos de Computação Gráfica estudados na
+disciplina. Entre os \textbf{desafios} enfrentados destacam-se: a animação
+correta das asas, resolvida com a separação das duas metades; a distorção da
+borda do cano, resolvida modelando corpo e borda como peças separadas no
+Blender e escalando-as de forma independente; e o ajuste das colisões e da
+inteligência artificial para uma jogabilidade equilibrada.
+
+Como \textbf{trabalhos futuros}, sugerem-se: animações esqueletais
+importadas, novos tipos de obstáculos e de aliados/inimigos, fases com
+cenários distintos e \emph{ranking} de pontuação.
+
+% ============================================================
+\section*{Referências}
+% ============================================================
+\begin{thebibliography}{9}
+
+\bibitem{opengl} OpenGL. \emph{OpenGL Documentation}.
+  Disponível em: \url{https://www.opengl.org/}.
+
+\bibitem{glut} Kilgard, M. J. \emph{The OpenGL Utility Toolkit (GLUT)}.
+
+\bibitem{assimp} Open Asset Import Library (Assimp).
+  \url{https://www.assimp.org/}.
+
+\bibitem{stb} Barrett, S. \emph{stb single-file public domain libraries}.
+  \url{https://github.com/nothings/stb}.
+
+\bibitem{miniaudio} \emph{miniaudio}. \url{https://miniaud.io/}.
+
+\bibitem{blender} Blender Foundation. \emph{Blender}.
+  \url{https://www.blender.org/}.
+
+\bibitem{sbc} Sociedade Brasileira de Computação (SBC).
+  \emph{Templates para artigos}. \url{https://www.sbc.org.br/}.
+
+\end{thebibliography}
+
+\end{document}
