@@ -82,8 +82,9 @@ canos sem colidir.
 Além de reproduzir a mecânica original, o jogo adiciona elementos
 inexistentes no clássico: uma \textbf{abelha aliada com inteligência
 artificial} (piloto automático),
-um \textbf{cenário com vegetação e profundidade}, \textbf{partículas},
-\textbf{áudio} e \textbf{dificuldade progressiva}. Os objetivos do trabalho
+um \textbf{cenário com vegetação e profundidade} (\emph{parallax}),
+\textbf{partículas}, \textbf{áudio} e \textbf{modos de dificuldade}. Os
+objetivos do trabalho
 são: (i) construir um jogo 3D funcional em OpenGL/GLUT; (ii) aplicar
 detecção de colisões, inteligência artificial e os recursos de iluminação,
 sombreamento, textura e visibilidade; e (iii) integrar bibliotecas
@@ -107,14 +108,20 @@ são:
   \item \textbf{stb\_image} --- leitura de imagens PNG usadas como textura.
   \item \textbf{stb\_truetype} + fonte \textbf{Pixelify Sans} --- renderização
         do texto do HUD (placar e mensagens).
-  \item \textbf{miniaudio} --- reprodução dos efeitos sonoros.
+  \item \textbf{miniaudio} --- saída de áudio (os efeitos sonoros são
+        sintetizados em tempo real pelo próprio código).
   \item \textbf{Blender} --- modelagem e exportação de \emph{assets} 3D
         (por exemplo, o cano com borda separada, em formato \texttt{.glb}).
 \end{itemize}
 
-Os modelos da capivara e demais objetos foram obtidos em repositórios
-livres (por exemplo, \emph{poly.pizza}) e, quando necessário, refeitos no
-Blender para se adequarem ao jogo.
+Os \emph{assets} 3D foram obtidos no repositório livre \emph{poly.pizza}
+(modelos em formato \texttt{.obj}, de licença livre): a \textbf{capivara},
+a \textbf{asa de morcego}, a \textbf{abelha} aliada, o \textbf{tufo de
+grama} e os dois modelos de \textbf{árvore} do cenário de fundo. O
+\textbf{cano} foi remodelado no \textbf{Blender}, com corpo e borda como
+peças separadas, e exportado em \texttt{.glb}. Quanto às texturas, a
+capivara usa uma imagem PNG (\emph{base color}), enquanto a textura do chão
+é \textbf{gerada proceduralmente} no próprio código.
 
 % ============================================================
 \section{Métodos}
@@ -127,17 +134,27 @@ sensação de profundidade. A câmera é posicionada com \texttt{gluLookAt},
 levemente afastada no eixo $Z$, observando o plano de jogo.
 
 \subsection{Iluminação e sombreamento}
-A cena utiliza uma fonte de luz pontual (\texttt{GL\_LIGHT0}). O
-sombreamento é suave (\emph{Gouraud}), com normais por vértice calculadas no
-carregamento dos modelos. O recurso \texttt{GL\_COLOR\_MATERIAL} permite
-definir o material dos objetos diretamente pela cor, e \texttt{GL\_NORMALIZE}
-mantém a iluminação correta mesmo quando os modelos são escalados.
+A cena é iluminada por uma \textbf{fonte de luz direcional}
+(\texttt{GL\_LIGHT0} com o quarto componente da posição igual a zero),
+simulando o \textbf{Sol} com raios paralelos. A iluminação combina as três
+componentes do modelo de reflexão: \textbf{difusa} (tom levemente quente),
+\textbf{ambiente} (preenchimento frio, para as sombras não ficarem pretas) e
+\textbf{especular}, com o material recebendo um brilho controlado por um
+expoente de \emph{shininess}. O sombreamento é suave (\emph{Gouraud}), com
+normais por vértice geradas no carregamento dos modelos. O recurso
+\texttt{GL\_COLOR\_MATERIAL} permite definir o material dos objetos
+diretamente pela cor, e \texttt{GL\_NORMALIZE} mantém a iluminação correta
+mesmo quando os modelos são escalados. As cores de alguns objetos são ainda
+levemente \emph{dessaturadas} para harmonizar a paleta do jogo.
 
 \subsection{Texturas}
 A capivara é texturizada a partir de uma imagem PNG (\emph{base color})
-carregada com \emph{stb\_image} e mapeada pelas coordenadas de textura do
-modelo. Modelos em \texttt{.glb}/\texttt{.obj} podem ainda ser coloridos
-pelas cores definidas em seus materiais.
+carregada com \emph{stb\_image} e mapeada pelas coordenadas de textura
+(\emph{UV}) do modelo. O chão usa uma \textbf{textura procedural} de grama,
+\emph{gerada por código} (variações de verde e tons terrosos), aplicada com
+repetição (\emph{tiling}, \texttt{GL\_REPEAT}) e filtragem \texttt{GL\_NEAREST}
+para um aspecto pixelado. Modelos em \texttt{.glb}/\texttt{.obj} sem imagem de
+textura são coloridos pelas cores difusas definidas em seus materiais.
 
 \subsection{Visibilidade}
 A visibilidade correta entre objetos é garantida pelo \textbf{\emph{buffer}
@@ -159,6 +176,23 @@ cano (um cilindro liso) é esticado verticalmente, enquanto a \textbf{borda}
 (\emph{rim}) é desenhada com escala \textbf{uniforme} na boca do cano. Essa
 separação evita a distorção que ocorria quando o modelo inteiro era
 esticado.
+
+\subsection{Cenário: profundidade, vegetação e céu}
+Para reforçar a percepção tridimensional, o cenário é composto em camadas.
+Sobre o \textbf{chão} texturizado rolam \textbf{tufos de grama} 3D
+distribuídos em várias \emph{fileiras} de profundidade, formando um gramado.
+Ao \textbf{fundo}, \textbf{árvores} de dois modelos, com escala e
+profundidade sorteadas, deslocam-se em \textbf{\emph{parallax}} --- mais
+lentamente que os canos --- o que acentua a sensação de distância. Grama,
+árvores e canos seguem a estratégia de \textbf{reciclagem}
+(\emph{object pooling}): os elementos que saem pela esquerda reaparecem à
+direita com novos parâmetros, evitando alocação de memória durante a
+partida. O \textbf{céu} é desenhado como um \emph{quad} em projeção
+ortográfica com \textbf{degradê} vertical, no lugar de uma cor chapada. Por
+fim, a geometria de cada modelo é compilada uma única vez em
+\textbf{\emph{display lists}}, evitando reenviar os vértices à GPU a cada
+quadro --- otimização importante dado o grande número de instâncias de grama
+e árvores desenhadas por quadro.
 
 \subsection{Física e controle}
 O movimento vertical usa integração de Euler semi-implícita: a cada quadro,
@@ -199,11 +233,19 @@ pontuação (também com tetos). Assim, a mesma base de jogo cobre desde um
 treino tranquilo até um desafio progressivo.
 
 \subsection{Demais recursos}
-O jogo inclui ainda: um \textbf{sistema de partículas} (poeira, brilho e
-explosão) desenhado com \emph{billboards} e \emph{blending}; um \textbf{HUD}
-com placar e mensagens renderizado por \emph{stb\_truetype}; uma
-\textbf{máquina de estados do jogo} (início, jogando, fim de jogo); e
-\textbf{áudio} via \emph{miniaudio}.
+O jogo inclui ainda: um \textbf{sistema de partículas} (poeira ao passar o
+cano, brilho ao pontuar e explosão ao colidir) desenhado com
+\emph{billboards} e \emph{blending}; \emph{feedback} de impacto na colisão
+com \textbf{tremor de tela} (\emph{screen shake}) e \textbf{flash}; um
+\textbf{HUD} em projeção ortográfica, com o título em fonte
+\emph{Pixelify Sans} rasterizada por \emph{stb\_truetype} (atlas de textura,
+com gradiente vertical e contorno) além do placar e das mensagens; e uma
+\textbf{máquina de estados do jogo} (início, jogando, fim de jogo).
+Quanto ao \textbf{áudio}, os efeitos sonoros (pulo, ponto e colisão) são
+\textbf{sintetizados em tempo real} --- ondas quadradas e ruído com envelope
+de decaimento, no estilo \emph{8-bit} --- por um \emph{callback} do
+\emph{miniaudio}, sem depender de arquivos de som, o que mantém o projeto
+autocontido e livre de questões de direitos autorais.
 
 % ============================================================
 \section{Resultados e Discussão}
@@ -237,12 +279,17 @@ execução e a tela de fim de jogo.
   \label{fig:gameover}
 \end{figure}
 
-A combinação de iluminação, sombreamento suave e textura confere volume aos
-objetos, enquanto o \emph{z-buffer} e o \emph{back-face culling} garantem a
-visibilidade correta. A colisão por AABB mostrou-se simples e eficaz para a
-jogabilidade. A IA de piloto automático da abelha aliada demonstra o
-requisito de inteligência artificial de forma marcante, pois ela
-efetivamente \emph{joga} o jogo, navegando as brechas à frente do jogador.
+A combinação de iluminação direcional, sombreamento suave e textura confere
+volume aos objetos, enquanto o \emph{z-buffer} e o \emph{back-face culling}
+garantem a visibilidade correta. As camadas de grama e árvores em
+\emph{parallax}, somadas ao céu em degradê, dão profundidade ao cenário; as
+partículas, o tremor de tela e o áudio sintetizado reforçam o
+\emph{feedback} de jogo. O uso de \emph{display lists} manteve a execução
+fluida mesmo com muitas instâncias de vegetação. A colisão por AABB
+mostrou-se simples e eficaz para a jogabilidade. Por fim, a IA de piloto
+automático da abelha aliada demonstra o requisito de inteligência artificial
+de forma marcante, pois ela efetivamente \emph{joga} o jogo, navegando as
+brechas à frente do jogador.
 
 % ============================================================
 \section{Conclusão}
@@ -280,6 +327,12 @@ cenários distintos e \emph{ranking} de pontuação.
 
 \bibitem{blender} Blender Foundation. \emph{Blender}.
   \url{https://www.blender.org/}.
+
+\bibitem{polypizza} Poly Pizza. \emph{Free 3D models}.
+  \url{https://poly.pizza/}.
+
+\bibitem{pixelify} Google Fonts. \emph{Pixelify Sans}.
+  \url{https://fonts.google.com/specimen/Pixelify+Sans}.
 
 \bibitem{sbc} Sociedade Brasileira de Computação (SBC).
   \emph{Templates para artigos}. \url{https://www.sbc.org.br/}.
