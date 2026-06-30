@@ -83,7 +83,9 @@ const float VEL_VAGUEIO        =   1.2f;  // unidades/s ao vagar
 const float INTERVALO_SORTEIO  =   1.5f;  // s entre sorteios de direção
 
 const float DURACAO_BATIDA     =   0.25f; // s de uma batida de asa
-const float AMPLITUDE_BATIDA   =  35.0f;  // graus de abertura da batida
+const float AMPLITUDE_BATIDA   =  35.0f;  // graus da batida do pulo
+const float AMP_IDLE           =   8.0f;  // flutter contínuo (graus)
+const float VEL_IDLE           =   7.0f;  // velocidade do flutter (rad/s)
 
 // ============================================================
 //  STRUCT MODELO — guarda tudo que precisamos de um modelo 3D.
@@ -155,6 +157,13 @@ GLuint g_texturaGrama = 0;
 // ============================================================
 enum EstadoJogo { INICIO, JOGANDO, GAMEOVER };
 EstadoJogo g_estado = INICIO;
+
+// Modos de dificuldade (escolhidos com 1/2/3 na tela inicial):
+//  FACIL   -> velocidade fixa, brecha fixa
+//  MEDIO   -> brecha encolhe (piso 2.1), velocidade fixa
+//  DIFICIL -> brecha encolhe (piso 2.1) E velocidade aumenta
+enum Dificuldade { FACIL, MEDIO, DIFICIL };
+Dificuldade g_dificuldade = MEDIO;   // padrão
 
 float g_capivaraY       = CAPIVARA_Y_INICIAL;
 float g_velocidadeY     = 0.0f;
@@ -795,14 +804,21 @@ void desenharMetadeAsa(int lado) {
 //  um pulo as asas dão uma batida e voltam ao repouso.
 // ============================================================
 void desenharAsas() {
-    // Batida única disparada pelo pulo.
     float agora = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
+
+    // 1) Flutter contínuo: bater leve o tempo todo (asas "vivas").
+    float idle = sinf(agora * VEL_IDLE) * AMP_IDLE;
+
+    // 2) Batida do pulo (one-shot), somada por cima. A potência 0.7 no
+    //    progresso faz a asa SUBIR rápido e VOLTAR devagar (mais natural).
+    float beat = 0.0f;
     float t = agora - g_tempoUltimoPulo;
-    float anguloAsa = 0.0f;                        // repouso
     if (t < DURACAO_BATIDA) {
-        float prog = t / DURACAO_BATIDA;           // 0 -> 1
-        anguloAsa = sinf(prog * 3.14159f) * AMPLITUDE_BATIDA;  // sobe e volta
+        float prog = t / DURACAO_BATIDA;                       // 0 -> 1
+        beat = sinf(powf(prog, 0.7f) * 3.14159f) * AMPLITUDE_BATIDA;
     }
+
+    float anguloAsa = idle + beat;
 
     float capX = capivaraTelaX();
     float capY = capivaraTelaY();
@@ -846,14 +862,17 @@ float sortearBrecha() {
 // ---- DIFICULDADE PROGRESSIVA (funções da pontuação) ----
 // Quanto mais pontos, mais rápido o cano vem (até um limite).
 float velocidadeCanoAtual() {
+    // Só o DIFÍCIL acelera com a pontuação; FÁCIL e MÉDIO ficam constantes.
+    if (g_dificuldade != DIFICIL) return VELOCIDADE_CANO;
     float extra = g_pontuacao * 0.12f;
     if (extra > 3.5f) extra = 3.5f;        // teto de velocidade
     return VELOCIDADE_CANO + extra;
 }
-// E a brecha vai encolhendo um pouco (até um mínimo jogável).
+// A brecha vai encolhendo conforme a pontuação (no MÉDIO e DIFÍCIL).
 float alturaBrechaAtual() {
+    if (g_dificuldade == FACIL) return ALTURA_BRECHA;   // fácil: brecha fixa
     float brecha = ALTURA_BRECHA - g_pontuacao * 0.04f;
-    if (brecha < 2.1f) brecha = 2.1f;      // não fica impossível
+    if (brecha < 2.1f) brecha = 2.1f;      // piso mínimo do gap (limite)
     return brecha;
 }
 
@@ -1174,8 +1193,28 @@ void retanguloArredondado(float x, float y, float larg, float alt, float raio) {
                 glVertex2f(ax + cosf(ang) * raio, ay + sinf(ang) * raio);
             }
         }
-        // fecha o leque voltando ao primeiro ponto
-        glVertex2f(x + raio, y);
+        // fecha o leque voltando ao PRIMEIRO ponto do perímetro
+        // (canto 0 a 180°), senão sobra uma fatia sem preencher à esquerda.
+        glVertex2f(x, y + raio);
+    glEnd();
+}
+
+// Mesmo formato do retanguloArredondado, mas só o CONTORNO (linha),
+// pelos mesmos arcos — assim a borda acompanha exatamente o fundo.
+void contornoArredondado(float x, float y, float larg, float alt, float raio) {
+    int seg = 6;
+    glBegin(GL_LINE_LOOP);
+    for (int canto = 0; canto < 4; canto++) {
+        float ax = (canto == 0 || canto == 3) ? x + raio : x + larg - raio;
+        float ay = (canto < 2) ? y + raio : y + alt - raio;
+        float ini = 0;
+        if (canto == 0) ini = 180; else if (canto == 1) ini = 270;
+        else if (canto == 2) ini = 0; else ini = 90;
+        for (int s = 0; s <= seg; s++) {
+            float ang = (ini + 90.0f * s / seg) * 3.14159f / 180.0f;
+            glVertex2f(ax + cosf(ang) * raio, ay + sinf(ang) * raio);
+        }
+    }
     glEnd();
 }
 
@@ -1310,6 +1349,19 @@ void desenharTituloTTF(float cx, float y, float escala, const char* texto) {
     desenharTTFgradiente(x, y, escala, texto);
 }
 
+// Texto TTF PREENCHIDO e centralizado em cx, com contorno preto fino
+// (mesma fonte sólida da tela inicial — usado no Game Over).
+void desenharTTFcentralizado(float cx, float y, float escala, const char* texto,
+                             float r, float g, float b, float a) {
+    float x = cx - larguraTTF(texto, escala) / 2.0f;
+    float d = 2.0f;
+    desenharTTFsolido(x - d, y, escala, texto, 0, 0, 0, a);
+    desenharTTFsolido(x + d, y, escala, texto, 0, 0, 0, a);
+    desenharTTFsolido(x, y - d, escala, texto, 0, 0, 0, a);
+    desenharTTFsolido(x, y + d, escala, texto, 0, 0, 0, a);
+    desenharTTFsolido(x, y, escala, texto, r, g, b, a);
+}
+
 // Tela INICIAL seguindo a regra dos terços (eixo Y):
 //  22% -> título | 48% -> capivara (3D) | 74% -> instrução
 //  + chão 2D enxuto nos 15% inferiores com crista de grama.
@@ -1357,6 +1409,17 @@ void desenharTelaInicio() {
     desenharTTFsolido(xi, yi - d, escInstr, instr, 0, 0, 0, alpha);
     desenharTTFsolido(xi, yi + d, escInstr, instr, 0, 0, 0, alpha);
     desenharTTFsolido(xi, yi, escInstr, instr, 1.0f, 1.0f, 1.0f, alpha);
+
+    // ---- OPÇÕES DE DIFICULDADE (em dourado) a ~84% do topo ----
+    const char* dif = "1 FACIL   2 MEDIO   3 DIFICIL";
+    float escDif = escTitulo * 0.34f;
+    float xd = cx - larguraTTF(dif, escDif) / 2.0f;
+    float yd = H * (1.0f - 0.84f);
+    desenharTTFsolido(xd - d, yd, escDif, dif, 0, 0, 0, 1.0f);
+    desenharTTFsolido(xd + d, yd, escDif, dif, 0, 0, 0, 1.0f);
+    desenharTTFsolido(xd, yd - d, escDif, dif, 0, 0, 0, 1.0f);
+    desenharTTFsolido(xd, yd + d, escDif, dif, 0, 0, 0, 1.0f);
+    desenharTTFsolido(xd, yd, escDif, dif, 1.0f, 0.92f, 0.40f, 1.0f);
 }
 
 // Desenha a tela/modal de GAME OVER (overlay + card + textos).
@@ -1384,38 +1447,28 @@ void desenharGameOver() {
     // fundo do card (azul-ardósia elegante)
     glColor4f(0.13f, 0.16f, 0.24f, 0.97f);
     retanguloArredondado(cardX, cardY, cardL, cardA, 18);
-    // borda clara fina
+    // borda clara fina — segue o MESMO arredondado do fundo
     glColor4f(0.45f, 0.55f, 0.75f, 1.0f);
     glLineWidth(2.0f);
-    glBegin(GL_LINE_LOOP);
-        glVertex2f(cardX + 18, cardY);
-        glVertex2f(cardX + cardL - 18, cardY);
-        glVertex2f(cardX + cardL, cardY + 18);
-        glVertex2f(cardX + cardL, cardY + cardA - 18);
-        glVertex2f(cardX + cardL - 18, cardY + cardA);
-        glVertex2f(cardX + 18, cardY + cardA);
-        glVertex2f(cardX, cardY + cardA - 18);
-        glVertex2f(cardX, cardY + 18);
-    glEnd();
+    contornoArredondado(cardX, cardY, cardL, cardA, 18);
 
     // 3) Conteúdo (de cima para baixo)
-    // Título "GAME OVER" em dourado, grande e com contorno
-    desenharStrokeCentralizado(cx, cardY + cardA - 95, 0.32f,
-                               "GAME OVER", 1.0f, 0.78f, 0.25f);
+    // Título "GAME OVER" em dourado, grande, PREENCHIDO e com contorno
+    desenharTTFcentralizado(cx, cardY + cardA - 110, 0.55f,
+                            "GAME OVER", 1.0f, 0.78f, 0.25f, 1.0f);
 
-    // Pontuação (branco)
+    // Pontuação (branco), preenchida
     snprintf(buf, sizeof(buf), "PONTUACAO: %d", g_pontuacao);
-    desenharStrokeCentralizado(cx, cardY + 95, 0.14f,
-                               buf, 0.95f, 0.95f, 0.95f);
+    desenharTTFcentralizado(cx, cardY + 110, 0.22f,
+                            buf, 0.95f, 0.95f, 0.95f, 1.0f);
 
     // Rodapé com opacidade pulsante (efeito de "piscar")
     float tempo = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
     float pulso = 0.5f + 0.5f * sinf(tempo * 4.0f);   // 0..1
-    glColor4f(0.85f, 0.85f, 0.90f, pulso);
     const char* rodape = "PRESSIONE ESPACO PARA REINICIAR";
-    float escR = 0.09f;
-    float xR = cx - larguraStroke(rodape, escR) / 2.0f;
-    desenharStroke(xR, cardY + 45, escR, 1.5f, rodape);
+    float escR = 0.16f;
+    float xR = cx - larguraTTF(rodape, escR) / 2.0f;
+    desenharTTFsolido(xR, cardY + 45, escR, rodape, 0.90f, 0.90f, 0.95f, pulso);
 
     glDisable(GL_BLEND);
 }
@@ -1438,6 +1491,10 @@ void desenharHUD() {
     } else if (g_estado == JOGANDO) {
         snprintf(buf, sizeof(buf), "Pontos: %d", g_pontuacao);
         desenharTexto(20, ALTURA_JANELA - 30, buf);
+        const char* nomeDif = (g_dificuldade == FACIL) ? "FACIL" :
+                              (g_dificuldade == MEDIO) ? "MEDIO" : "DIFICIL";
+        snprintf(buf, sizeof(buf), "Modo: %s", nomeDif);
+        desenharTexto(20, ALTURA_JANELA - 52, buf);
     } else if (g_estado == GAMEOVER) {
         desenharGameOver();
     }
@@ -1597,6 +1654,13 @@ void acaoPrincipal() {
 void teclado(unsigned char tecla, int x, int y) {
     if (tecla == 27) exit(0);          // ESC fecha
     if (tecla == ' ') acaoPrincipal();
+
+    // Na tela inicial, 1/2/3 escolhem a dificuldade e já começam o jogo.
+    if (g_estado == INICIO) {
+        if      (tecla == '1') { g_dificuldade = FACIL;   reiniciarJogo(); }
+        else if (tecla == '2') { g_dificuldade = MEDIO;   reiniciarJogo(); }
+        else if (tecla == '3') { g_dificuldade = DIFICIL; reiniciarJogo(); }
+    }
 }
 
 void mouse(int botao, int estadoBotao, int x, int y) {
