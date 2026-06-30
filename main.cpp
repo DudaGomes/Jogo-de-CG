@@ -116,7 +116,7 @@ const char* TEX_CAPIVARA = "models3d/Capybara/Capybara_BaseColor.png";
 const char* OBJ_ASAS     = "models3d/Bat wing/bat wing.obj";
 const char* OBJ_ABELHA   = "models3d/Bee/model.obj";
 const char* OBJ_GRAMA    = "models3d/Grass Patch/model.obj";
-const char* GLB_CANO     = "models3d/Pipe.glb";
+const char* GLB_CANO     = "models3d/Pipe_novo.glb";
 
 // Tufos de grama 3D que rolam na base e reciclam ao sair da tela.
 // Várias FILEIRAS em profundidades diferentes (z) formam um gramado
@@ -501,6 +501,35 @@ void desenharGeometria(const Modelo& mod) {
         }
         glEnd();
     }
+}
+
+// ------------------------------------------------------------
+//  Desenha UMA malha específica do modelo (por índice), com a
+//  cor do material. Usado no cano, que tem 2 malhas (corpo/borda)
+//  desenhadas com escalas diferentes.
+// ------------------------------------------------------------
+void desenharMalhaCrua(const Modelo& mod, int meshIdx) {
+    const aiMesh* malha = mod.cena->mMeshes[meshIdx];
+    if (mod.usarCorMaterial) {
+        aiColor4D cor;
+        const aiMaterial* mat = mod.cena->mMaterials[malha->mMaterialIndex];
+        if (aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &cor) == AI_SUCCESS)
+            corMaterial(mod, cor.r, cor.g, cor.b);
+    }
+    glBegin(GL_TRIANGLES);
+    for (unsigned int f = 0; f < malha->mNumFaces; f++) {
+        const aiFace& face = malha->mFaces[f];
+        for (unsigned int i = 0; i < face.mNumIndices; i++) {
+            unsigned int idx = face.mIndices[i];
+            if (malha->HasNormals()) {
+                aiVector3D n = malha->mNormals[idx];
+                glNormal3f(n.x, n.y, n.z);
+            }
+            aiVector3D p = malha->mVertices[idx];
+            glVertex3f(p.x, p.y, p.z);
+        }
+    }
+    glEnd();
 }
 
 // ============================================================
@@ -929,27 +958,64 @@ void atualizarCanos(float dt) {
     }
 }
 
-// Desenha o MODELO 3D do cano preenchendo de y0 até y1, no x dado.
-// O modelo vem "deitado" (eixo longo em Z) => giramos para ficar em pé.
-//  - invertido=false: cano de baixo, abertura (rim) para CIMA.
-//  - invertido=true : cano de cima, de cabeça para baixo (rim para BAIXO).
+// Info por-malha do cano (corpo e borda), medida 1x no carregamento.
+struct MalhaInfo {
+    int   idx = 0;
+    float cx = 0, cy = 0, cz = 0;        // centro do bounding box
+    float tamX = 1, tamY = 1, tamZ = 1;  // dimensões
+};
+MalhaInfo g_tube, g_rim;
+
+// Mede as 2 malhas do cano e decide qual é o CORPO (mais alto em Y) e
+// qual é a BORDA (a outra). Robusto à ordem/nome das malhas no GLB.
+void prepararCano() {
+    if (!g_cano.cena || g_cano.cena->mNumMeshes < 2) return;
+    MalhaInfo info[2];
+    for (int m = 0; m < 2; m++) {
+        const aiMesh* malha = g_cano.cena->mMeshes[m];
+        float mnx=1e9f,mny=1e9f,mnz=1e9f, mxx=-1e9f,mxy=-1e9f,mxz=-1e9f;
+        for (unsigned v = 0; v < malha->mNumVertices; v++) {
+            aiVector3D p = malha->mVertices[v];
+            if(p.x<mnx)mnx=p.x; if(p.x>mxx)mxx=p.x;
+            if(p.y<mny)mny=p.y; if(p.y>mxy)mxy=p.y;
+            if(p.z<mnz)mnz=p.z; if(p.z>mxz)mxz=p.z;
+        }
+        info[m].idx = m;
+        info[m].cx=(mnx+mxx)/2; info[m].cy=(mny+mxy)/2; info[m].cz=(mnz+mxz)/2;
+        info[m].tamX=mxx-mnx;   info[m].tamY=mxy-mny;   info[m].tamZ=mxz-mnz;
+    }
+    if (info[0].tamY >= info[1].tamY) { g_tube = info[0]; g_rim = info[1]; }
+    else                              { g_tube = info[1]; g_rim = info[0]; }
+}
+
+// Desenha o cano preenchendo de y0 até y1, no x dado.
+// CORPO: cilindro liso esticado em Y (esticar liso não distorce).
+// BORDA: escala UNIFORME na boca do cano (por isso não distorce mais).
+//  - invertido=false: cano de baixo, boca/borda para CIMA (y1).
+//  - invertido=true : cano de cima,  boca/borda para BAIXO (y0).
 void desenharCanoModelo(float x, float y0, float y1, bool invertido) {
     if (!g_cano.cena) return;
     float altura = y1 - y0;
 
-    // Escalas que esticam o modelo: largura -> LARGURA_CANO, comprimento
-    // (eixo Z do modelo) -> altura do segmento.
-    float escX = LARGURA_CANO / g_cano.tamX;  // largura
-    float escY = LARGURA_CANO / g_cano.tamY;  // profundidade
-    float escZ = altura       / g_cano.tamZ;  // comprimento (vira a altura)
+    // fator horizontal: leva o diâmetro do CORPO à LARGURA_CANO
+    float escXZ = LARGURA_CANO / g_tube.tamX;
 
+    // ---- CORPO: estica em Y para preencher o segmento ----
+    float escY = altura / g_tube.tamY;
     glPushMatrix();
         glTranslatef(x, (y0 + y1) / 2.0f, 0.0f);
-        // +90 inverte (rim para baixo); -90 deixa em pé (rim para cima).
-        glRotatef(invertido ? 90.0f : -90.0f, 1.0f, 0.0f, 0.0f);
-        glScalef(escX, escY, escZ);
-        glTranslatef(-g_cano.centroX, -g_cano.centroY, -g_cano.centroZ);
-        desenharGeometria(g_cano);
+        glScalef(escXZ, escY, escXZ);
+        glTranslatef(-g_tube.cx, -g_tube.cy, -g_tube.cz);
+        desenharMalhaCrua(g_cano, g_tube.idx);
+    glPopMatrix();
+
+    // ---- BORDA: escala uniforme (sem distorção) na boca do cano ----
+    float yBoca = invertido ? y0 : y1;
+    glPushMatrix();
+        glTranslatef(x, yBoca, 0.0f);
+        glScalef(escXZ, escXZ, escXZ);   // UNIFORME => rim mantém a proporção
+        glTranslatef(-g_rim.cx, -g_rim.cy, -g_rim.cz);
+        desenharMalhaCrua(g_cano, g_rim.idx);
     glPopMatrix();
 }
 
@@ -1695,6 +1761,7 @@ int main(int argc, char** argv) {
     carregarModelo(g_cano, GLB_CANO, 1.0f);
     g_cano.usarCorMaterial = true;
     g_cano.desaturar = 0.22f;          // verde menos berrante
+    prepararCano();                    // separa corpo/borda do cano
 
     // Árvores de fundo (dois modelos, cores do .mtl, levemente dessaturadas)
     carregarModelo(g_arvore1, OBJ_ARVORE1, ARVORE_TAM);
