@@ -1,7 +1,5 @@
-// ============================================================
-//  Flappy Capivara — Jogo de Computação Gráfica
-//  Fase 1: Janela GLUT, câmera 3D e chão
-// ============================================================
+// Flappy Capivara — Jogo de Computação Gráfica
+// Fase 1: Janela GLUT, câmera 3D e chão
 
 // Inclui as bibliotecas do OpenGL e GLUT para macOS
 #include <GLUT/glut.h>
@@ -37,31 +35,23 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 
-// ============================================================
-//  Configurações da janela
-// ============================================================
+// Configurações da janela
 const int LARGURA_JANELA  = 800;
 const int ALTURA_JANELA   = 600;
 const char* TITULO_JANELA = "Flappy Capivara";
 
-// ============================================================
-//  Configuração da câmera
-//  O jogo tem gameplay 2D no plano XY, mas a câmera fica
-//  levemente afastada no eixo Z para dar sensação de 3D.
-// ============================================================
+// Configuração da câmera
+// O jogo tem gameplay 2D no plano XY, mas a câmera fica
+// levemente afastada no eixo Z para dar sensação de 3D.
 const float CAMERA_X = 0.0f;   // olha para o centro da cena
 const float CAMERA_Y = 2.0f;   // altura dos olhos
 const float CAMERA_Z = 10.0f;  // distância para a tela do jogo
 
-// ============================================================
-//  Posição da capivara no mundo (plano XY — gameplay 2D).
-//  Por enquanto fica fixa; na Fase 3 ela vai cair/pular.
-// ============================================================
+// Posição da capivara no mundo (plano XY — gameplay 2D).
+// Por enquanto fica fixa; na Fase 3 ela vai cair/pular.
 const float CAPIVARA_X = -2.0f;   // um pouco à esquerda (X fica fixo)
 
-// ============================================================
-//  PARÂMETROS DO JOGO (ajuste fino rodando o jogo)
-// ============================================================
+// PARÂMETROS DO JOGO (ajuste fino rodando o jogo)
 const float GRAVIDADE         = -15.0f;  // unidades/s² (puxa para baixo)
 const float IMPULSO_PULO       =   6.0f;  // velocidade p/ cima ao pular
 const float ALTURA_TETO        =   6.0f;  // capivara não passa disso
@@ -86,11 +76,9 @@ const float AMPLITUDE_BATIDA   =  35.0f;  // graus da batida do pulo
 const float AMP_IDLE           =   8.0f;  // flutter contínuo (graus)
 const float VEL_IDLE           =   7.0f;  // velocidade do flutter (rad/s)
 
-// ============================================================
-//  STRUCT MODELO — guarda tudo que precisamos de um modelo 3D.
-//  Usamos a MESMA struct e as MESMAS funções para a capivara,
-//  as asas e (depois) as árvores. Isso evita repetir código.
-// ============================================================
+// STRUCT MODELO — guarda tudo que precisamos de um modelo 3D.
+// Usamos a MESMA struct e as MESMAS funções para a capivara,
+// as asas e (depois) as árvores. Isso evita repetir código.
 struct Modelo {
     const aiScene* cena = nullptr;   // dados 3D carregados pela Assimp
     GLuint textura = 0;              // textura (0 = não tem, usa cor)
@@ -151,16 +139,14 @@ float g_arvoreZ[NUM_ARVORES];        // profundidade (mais longe = mais atrás)
 // Textura procedural da grama (gerada no código, sem arquivo)
 GLuint g_texturaGrama = 0;
 
-// ============================================================
-//  ESTADO GLOBAL DO JOGO
-// ============================================================
+// ESTADO GLOBAL DO JOGO
 enum EstadoJogo { INICIO, JOGANDO, GAMEOVER };
 EstadoJogo g_estado = INICIO;
 
 // Modos de dificuldade (escolhidos com 1/2/3 na tela inicial):
-//  FACIL   -> velocidade fixa, brecha fixa
-//  MEDIO   -> brecha encolhe (piso 2.1), velocidade fixa
-//  DIFICIL -> brecha encolhe (piso 2.1) E velocidade aumenta
+// FACIL   -> velocidade fixa, brecha fixa
+// MEDIO   -> brecha encolhe (piso 2.1), velocidade fixa
+// DIFICIL -> brecha encolhe (piso 2.1) E velocidade aumenta
 enum Dificuldade { FACIL, MEDIO, DIFICIL };
 Dificuldade g_dificuldade = MEDIO;   // padrão
 
@@ -186,7 +172,7 @@ float g_tempoAnterior = 0.0f;       // p/ calcular dt no idle
 float g_shake = 0.0f;
 float g_flash = 0.0f;
 
-// ---- Sistema de PARTÍCULAS (poeira, brilho, explosão) ----
+// Sistema de PARTÍCULAS (poeira, brilho, explosão)
 struct Particula {
     float x, y, z, vx, vy, vz;
     float vida, vidaMax;     // segundos restantes / iniciais
@@ -196,11 +182,9 @@ struct Particula {
 const int MAX_PART = 256;
 Particula g_part[MAX_PART];
 
-// ============================================================
-//  ÁUDIO — efeitos 8-bit SINTETIZADOS (miniaudio, sem arquivos)
-//  Cada "voz" gera uma onda quadrada (ou ruído) com decaimento.
-//  É a estética clássica de arcade (Flappy/Mario), e livre de copyright.
-// ============================================================
+// ÁUDIO — efeitos 8-bit SINTETIZADOS (miniaudio, sem arquivos)
+// Cada "voz" gera uma onda quadrada (ou ruído) com decaimento.
+// É a estética clássica de arcade (Flappy/Mario), e livre de copyright.
 struct Voz {
     bool  ativa = false;
     int   tipo;          // 0 = blip (pulo), 1 = moeda (ponto), 2 = ruído (batida)
@@ -284,11 +268,9 @@ void iniciarAudio() {
     printf("Audio iniciado (efeitos 8-bit sintetizados).\n");
 }
 
-// ------------------------------------------------------------
-//  Calcula o centro e a escala de UM modelo a partir da caixa
-//  que envolve todos os seus vértices (bounding box).
-//  tamanhoAlvo = quantas unidades a maior dimensão deve ocupar.
-// ------------------------------------------------------------
+// Calcula o centro e a escala de UM modelo a partir da caixa
+// que envolve todos os seus vértices (bounding box).
+// tamanhoAlvo = quantas unidades a maior dimensão deve ocupar.
 void calcularBoundingBox(Modelo& mod, float tamanhoAlvo) {
     float minX =  1e9, minY =  1e9, minZ =  1e9;
     float maxX = -1e9, maxY = -1e9, maxZ = -1e9;
@@ -317,10 +299,8 @@ void calcularBoundingBox(Modelo& mod, float tamanhoAlvo) {
     if (maior > 0) mod.escala = tamanhoAlvo / maior;
 }
 
-// ------------------------------------------------------------
-//  Carrega UM modelo .obj do disco para a struct Modelo.
-//  Retorna true se deu certo.
-// ------------------------------------------------------------
+// Carrega UM modelo .obj do disco para a struct Modelo.
+// Retorna true se deu certo.
 bool carregarModelo(Modelo& mod, const char* caminhoObj, float tamanhoAlvo) {
     // Triangulate: vira tudo triângulo. GenSmoothNormals: cria normais.
     mod.cena = aiImportFile(caminhoObj,
@@ -338,10 +318,8 @@ bool carregarModelo(Modelo& mod, const char* caminhoObj, float tamanhoAlvo) {
     return true;
 }
 
-// ------------------------------------------------------------
-//  Carrega uma imagem PNG como textura para um Modelo.
-//  Precisa ser chamada DEPOIS de criar a janela (contexto GL).
-// ------------------------------------------------------------
+// Carrega uma imagem PNG como textura para um Modelo.
+// Precisa ser chamada DEPOIS de criar a janela (contexto GL).
 void carregarTextura(Modelo& mod, const char* caminho) {
     int largura, altura, canais;
 
@@ -365,11 +343,9 @@ void carregarTextura(Modelo& mod, const char* caminho) {
     printf("Textura '%s' carregada: %dx%d.\n", caminho, largura, altura);
 }
 
-// ------------------------------------------------------------
-//  Cria uma textura PIXELADA de grama, gerada no próprio código.
-//  Verdes variados + alguns fios mais claros/escuros. Filtro NEAREST
-//  mantém o aspecto de "pixel art"; REPEAT permite repetir no chão.
-// ------------------------------------------------------------
+// Cria uma textura PIXELADA de grama, gerada no próprio código.
+// Verdes variados + alguns fios mais claros/escuros. Filtro NEAREST
+// mantém o aspecto de "pixel art"; REPEAT permite repetir no chão.
 void criarTexturaGrama() {
     const int N = 32;
     unsigned char px[N * N * 3];
@@ -400,11 +376,9 @@ void criarTexturaGrama() {
     printf("Textura de grama (procedural) criada.\n");
 }
 
-// ------------------------------------------------------------
-//  Desenha UM modelo já normalizado (centralizado e escalado).
-//  Quem chama é responsável por posicionar/rotacionar antes
-//  (glTranslatef / glRotatef no mundo).
-// ------------------------------------------------------------
+// Desenha UM modelo já normalizado (centralizado e escalado).
+// Quem chama é responsável por posicionar/rotacionar antes
+// (glTranslatef / glRotatef no mundo).
 // Aplica a cor do material, opcionalmente dessaturada (puxa p/ cinza).
 void corMaterial(const Modelo& mod, float r, float g, float b) {
     float lum = 0.30f * r + 0.59f * g + 0.11f * b;   // luminância
@@ -479,11 +453,9 @@ void desenharModelo(Modelo& mod) {
     glCallList(mod.lista);  // desenha pela 1ª vez
 }
 
-// ------------------------------------------------------------
-//  Desenha a geometria CRUA do modelo (sem escala/centralização).
-//  Usado quando precisamos escalar de forma não-uniforme (o cano,
-//  que é esticado para preencher cada altura).
-// ------------------------------------------------------------
+// Desenha a geometria CRUA do modelo (sem escala/centralização).
+// Usado quando precisamos escalar de forma não-uniforme (o cano,
+// que é esticado para preencher cada altura).
 void desenharGeometria(const Modelo& mod) {
     for (unsigned int m = 0; m < mod.cena->mNumMeshes; m++) {
         const aiMesh* malha = mod.cena->mMeshes[m];
@@ -510,11 +482,9 @@ void desenharGeometria(const Modelo& mod) {
     }
 }
 
-// ------------------------------------------------------------
-//  Desenha UMA malha específica do modelo (por índice), com a
-//  cor do material. Usado no cano, que tem 2 malhas (corpo/borda)
-//  desenhadas com escalas diferentes.
-// ------------------------------------------------------------
+// Desenha UMA malha específica do modelo (por índice), com a
+// cor do material. Usado no cano, que tem 2 malhas (corpo/borda)
+// desenhadas com escalas diferentes.
 void desenharMalhaCrua(const Modelo& mod, int meshIdx) {
     const aiMesh* malha = mod.cena->mMeshes[meshIdx];
     if (mod.usarCorMaterial) {
@@ -539,9 +509,7 @@ void desenharMalhaCrua(const Modelo& mod, int meshIdx) {
     glEnd();
 }
 
-// ============================================================
-//  PARTÍCULAS — poeira, brilho e explosão (billboards + blending)
-// ============================================================
+// PARTÍCULAS — poeira, brilho e explosão (billboards + blending)
 float aleat(float a, float b) { return a + (rand() % 1000) / 1000.0f * (b - a); }
 
 void emitirParticula(float x, float y, float vx, float vy, float vida,
@@ -622,9 +590,7 @@ void desenharParticulas() {
     glEnable(GL_LIGHTING);
 }
 
-// ============================================================
-//  CÉU em DEGRADÊ e FLASH de tela (quads 2D em ortho)
-// ============================================================
+// CÉU em DEGRADÊ e FLASH de tela (quads 2D em ortho)
 void desenharCeu() {
     glDisable(GL_LIGHTING);
     glDisable(GL_DEPTH_TEST);
@@ -669,9 +635,7 @@ void morrer() {
     tocarMorte();
 }
 
-// ============================================================
-//  FUNÇÕES PURAS DE COLISÃO (sem estado, fáceis de testar)
-// ============================================================
+// FUNÇÕES PURAS DE COLISÃO (sem estado, fáceis de testar)
 
 // Sobreposição de duas caixas alinhadas aos eixos (AABB), em 2D (X,Y).
 bool sobreposicaoAABB(float ax0, float ax1, float ay0, float ay1,
@@ -700,14 +664,12 @@ void rodarTestes() {
     printf("TODOS OS TESTES OK\n");
 }
 
-// ============================================================
-//  Ajustes das ASAS (fáceis de mexer enquanto encaixamos).
-//  Posição relativa à capivara, rotação e tamanho.
-// ============================================================
+// Ajustes das ASAS (fáceis de mexer enquanto encaixamos).
+// Posição relativa à capivara, rotação e tamanho.
 // O bat wing é um PAR plano no plano XY. Desenhamos cada metade como
 // UMA asa, controlando as duas separadamente para formar um par de voo:
-//  - ASA DE TRÁS  (flanco -Z): alta e flutuante, atrás da capivara.
-//  - ASA DA FRENTE (flanco +Z): mais baixa, acoplada nas costas (lado visível).
+// - ASA DE TRÁS  (flanco -Z): alta e flutuante, atrás da capivara.
+// - ASA DA FRENTE (flanco +Z): mais baixa, acoplada nas costas (lado visível).
 const float ASA_ROT_X  = 1.0f;  // leve inclinação para trás (ambas)
 const float ASA_TAM    =  1.9f;   // tamanho-alvo das asas
 
@@ -727,11 +689,9 @@ const float ASA_FRENTE_DX = -0.10f;
 const float ASA_FRENTE_DY =  0.37f;
 const float ASA_FRENTE_DZ =  0.02f;
 
-// ------------------------------------------------------------
-//  Posição da capivara NA TELA. Na tela inicial ela fica
-//  centralizada no X e flutuando (idle bob); jogando, usa a
-//  posição real do jogo.
-// ------------------------------------------------------------
+// Posição da capivara NA TELA. Na tela inicial ela fica
+// centralizada no X e flutuando (idle bob); jogando, usa a
+// posição real do jogo.
 float capivaraTelaX() {
     return (g_estado == INICIO) ? 0.0f : CAPIVARA_X;
 }
@@ -743,9 +703,7 @@ float capivaraTelaY() {
     return g_capivaraY;
 }
 
-// ============================================================
-//  Desenha a capivara no mundo (posição + giro de perfil).
-// ============================================================
+// Desenha a capivara no mundo (posição + giro de perfil).
 void desenharCapivara() {
     // Inclina conforme a velocidade: nariz p/ cima subindo, p/ baixo caindo.
     float inclina = g_velocidadeY * 4.0f;          // graus (proporcional)
@@ -760,12 +718,10 @@ void desenharCapivara() {
     glPopMatrix();
 }
 
-// ------------------------------------------------------------
-//  Desenha só UMA metade do modelo das asas.
-//  lado = -1 (esquerda, x <= centro) ou +1 (direita, x > centro).
-//  Assim podemos girar cada metade em sentido oposto e o bater
-//  fica simétrico (não vira "gangorra").
-// ------------------------------------------------------------
+// Desenha só UMA metade do modelo das asas.
+// lado = -1 (esquerda, x <= centro) ou +1 (direita, x > centro).
+// Assim podemos girar cada metade em sentido oposto e o bater
+// fica simétrico (não vira "gangorra").
 void desenharMetadeAsa(int lado) {
     const Modelo& mod = g_asas;
     glColor3f(mod.corR, mod.corG, mod.corB);
@@ -796,11 +752,9 @@ void desenharMetadeAsa(int lado) {
     }
 }
 
-// ============================================================
-//  Desenha as asas sobre as costas da capivara.
-//  A batida é DISPARADA PELO PULO (animação one-shot): logo após
-//  um pulo as asas dão uma batida e voltam ao repouso.
-// ============================================================
+// Desenha as asas sobre as costas da capivara.
+// A batida é DISPARADA PELO PULO (animação one-shot): logo após
+// um pulo as asas dão uma batida e voltam ao repouso.
 void desenharAsas() {
     float agora = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
 
@@ -808,7 +762,7 @@ void desenharAsas() {
     float idle = sinf(agora * VEL_IDLE) * AMP_IDLE;
 
     // 2) Batida do pulo (one-shot), somada por cima. A potência 0.7 no
-    //    progresso faz a asa SUBIR rápido e VOLTAR devagar (mais natural).
+    // progresso faz a asa SUBIR rápido e VOLTAR devagar (mais natural).
     float beat = 0.0f;
     float t = agora - g_tempoUltimoPulo;
     if (t < DURACAO_BATIDA) {
@@ -826,7 +780,7 @@ void desenharAsas() {
     // As duas asas usam a MESMA metade e o MESMO sinal => batem juntas.
     float anguloTotal = -(ASA_LEVANTA + anguloAsa);
 
-    // ---- Asa de TRÁS (flanco -Z): raiz no ombro, um pouco mais alta ----
+    // Asa de TRÁS (flanco -Z): raiz no ombro, um pouco mais alta
     glPushMatrix();
         glTranslatef(capX + ASA_TRAS_DX, capY + ASA_TRAS_DY, ASA_TRAS_DZ);
         glRotatef(ASA_ROT_X, 1.0f, 0.0f, 0.0f);
@@ -836,7 +790,7 @@ void desenharAsas() {
         desenharMetadeAsa(-1);
     glPopMatrix();
 
-    // ---- Asa da FRENTE (flanco +Z): raiz no mesmo ombro, mais baixa ----
+    // Asa da FRENTE (flanco +Z): raiz no mesmo ombro, mais baixa
     glPushMatrix();
         glTranslatef(capX + ASA_FRENTE_DX, capY + ASA_FRENTE_DY, ASA_FRENTE_DZ);
         glRotatef(ASA_ROT_X, 1.0f, 0.0f, 0.0f);
@@ -847,9 +801,7 @@ void desenharAsas() {
     glPopMatrix();
 }
 
-// ============================================================
-//  CANOS (obstáculos) — primitivas glutSolidCube
-// ============================================================
+// CANOS (obstáculos) — primitivas glutSolidCube
 
 // Sorteia uma altura de brecha dentro de uma faixa segura.
 float sortearBrecha() {
@@ -857,7 +809,7 @@ float sortearBrecha() {
     return 1.6f + (rand() % 100) / 100.0f * 2.8f;
 }
 
-// ---- DIFICULDADE PROGRESSIVA (funções da pontuação) ----
+// DIFICULDADE PROGRESSIVA (funções da pontuação)
 // Quanto mais pontos, mais rápido o cano vem (até um limite).
 float velocidadeCanoAtual() {
     // Só o DIFÍCIL acelera com a pontuação; FÁCIL e MÉDIO ficam constantes.
@@ -882,7 +834,7 @@ void inicializarCanos() {
     }
 }
 
-// ---- GRAMA 3D na base (fileira que rola e recicla) ----
+// GRAMA 3D na base (fileira que rola e recicla)
 void inicializarGrama() {
     for (int i = 0; i < NUM_GRAMAS; i++)
         g_gramaX[i] = -GRAMA_LIMITE + i * GRAMA_ESPACO;
@@ -898,7 +850,7 @@ void atualizarGrama(float dt) {
     }
 }
 
-// ---- ÁRVORES de fundo (parallax + reciclagem) ----
+// ÁRVORES de fundo (parallax + reciclagem)
 // Sorteia modelo, tamanho e profundidade de UMA árvore.
 void sortearArvore(int i) {
     g_arvoreTipo[i]   = rand() % 2;                          // Tree ou Tree-2
@@ -1008,8 +960,8 @@ void prepararCano() {
 // Desenha o cano preenchendo de y0 até y1, no x dado.
 // CORPO: cilindro liso esticado em Y (esticar liso não distorce).
 // BORDA: escala UNIFORME na boca do cano (por isso não distorce mais).
-//  - invertido=false: cano de baixo, boca/borda para CIMA (y1).
-//  - invertido=true : cano de cima,  boca/borda para BAIXO (y0).
+// - invertido=false: cano de baixo, boca/borda para CIMA (y1).
+// - invertido=true : cano de cima,  boca/borda para BAIXO (y0).
 void desenharCanoModelo(float x, float y0, float y1, bool invertido) {
     if (!g_cano.cena) return;
     float altura = y1 - y0;
@@ -1017,7 +969,7 @@ void desenharCanoModelo(float x, float y0, float y1, bool invertido) {
     // fator horizontal: leva o diâmetro do CORPO à LARGURA_CANO
     float escXZ = LARGURA_CANO / g_tube.tamX;
 
-    // ---- CORPO: estica em Y para preencher o segmento ----
+    // CORPO: estica em Y para preencher o segmento
     float escY = altura / g_tube.tamY;
     glPushMatrix();
         glTranslatef(x, (y0 + y1) / 2.0f, 0.0f);
@@ -1026,7 +978,7 @@ void desenharCanoModelo(float x, float y0, float y1, bool invertido) {
         desenharMalhaCrua(g_cano, g_tube.idx);
     glPopMatrix();
 
-    // ---- BORDA: escala uniforme (sem distorção) na boca do cano ----
+    // BORDA: escala uniforme (sem distorção) na boca do cano
     float yBoca = invertido ? y0 : y1;
     glPushMatrix();
         glTranslatef(x, yBoca, 0.0f);
@@ -1067,11 +1019,9 @@ void verificarColisoesCanos() {
     }
 }
 
-// ============================================================
-//  ALIADA com IA (piloto automático: navega as brechas)
-//  A abelha cai com gravidade e bate asa sozinha mirando no centro
-//  da próxima brecha — sempre à frente da capivara, como um guia.
-// ============================================================
+// ALIADA com IA (piloto automático: navega as brechas)
+// A abelha cai com gravidade e bate asa sozinha mirando no centro
+// da próxima brecha — sempre à frente da capivara, como um guia.
 void inicializarAliada() {
     g_aliada.y  = CAPIVARA_Y_INICIAL;
     g_aliada.vy = 0.0f;
@@ -1079,7 +1029,7 @@ void inicializarAliada() {
 
 void atualizarAliada(float dt) {
     // 1) Acha o cano que a abelha está entrando ou logo à frente (em X)
-    //    e mira no CENTRO da brecha desse cano.
+    // e mira no CENTRO da brecha desse cano.
     float melhorDist = 1e9f;
     float alvoY = g_aliada.y;                 // sem cano por perto: mantém
     for (int i = 0; i < NUM_CANOS; i++) {
@@ -1107,8 +1057,8 @@ void desenharAliada() {
 
     // Orientação: fica a MAIOR parte do tempo de PERFIL (voando, olhando
     // para frente) e de vez em quando gira suavemente para encarar a tela.
-    //  - perfil       => ângulo 0
-    //  - olhando p/ câmera => ângulo -90 (vista frontal vista antes)
+    // - perfil       => ângulo 0
+    // - olhando p/ câmera => ângulo -90 (vista frontal vista antes)
     float fase  = sinf(agora * 0.7f);          // -1..1 (lento)
     float olhar = fmaxf(0.0f, fase);           // 0 na maior parte do ciclo
     olhar = olhar * olhar;                     // suaviza (fica mais no perfil)
@@ -1121,9 +1071,7 @@ void desenharAliada() {
     glPopMatrix();
 }
 
-// ============================================================
-//  HUD — texto 2D (placar e mensagens), por cima da cena
-// ============================================================
+// HUD — texto 2D (placar e mensagens), por cima da cena
 
 // Texto simples em bitmap (placar durante o jogo, tela de início).
 void desenharTexto(float x, float y, const char* texto) {
@@ -1132,8 +1080,8 @@ void desenharTexto(float x, float y, const char* texto) {
         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
 }
 
-// --- Fonte VETORIAL (stroke): pode ser ampliada sem ficar borrada,
-//     dando um visual "grande e marcante" para o GAME OVER. ---
+// Fonte VETORIAL (stroke): pode ser ampliada sem ficar borrada,
+// dando um visual "grande e marcante" para o GAME OVER.
 
 // Largura em pixels que um texto stroke ocupa numa dada escala.
 float larguraStroke(const char* texto, float escala) {
@@ -1214,11 +1162,9 @@ void contornoArredondado(float x, float y, float larg, float alt, float raio) {
     glEnd();
 }
 
-// ============================================================
-//  FONTE TTF (Pixelify Sans) via stb_truetype — glifos SÓLIDOS.
-//  Rasterizamos a fonte uma vez para um "atlas" (textura) e
-//  depois desenhamos cada letra como um quad texturizado.
-// ============================================================
+// FONTE TTF (Pixelify Sans) via stb_truetype — glifos SÓLIDOS.
+// Rasterizamos a fonte uma vez para um "atlas" (textura) e
+// depois desenhamos cada letra como um quad texturizado.
 const char*  CAMINHO_FONTE = "fonts/PixelifySans.ttf";
 const int    ATLAS_W = 1024, ATLAS_H = 1024; // atlas grande p/ caber tudo
 const float  FONTE_ALTURA = 96.0f;           // px de rasterização (nítido)
@@ -1334,7 +1280,7 @@ void desenharTituloTTF(float cx, float y, float escala, const char* texto) {
     desenharTTFsolido(x + 4, y - 4, escala, texto, 0, 0, 0, 1.0f);
 
     // 2) Contorno preto: 8 cópias deslocadas em volta (~3px) que abraçam
-    //    a letra sem virar um bloco sólido atrás do texto.
+    // a letra sem virar um bloco sólido atrás do texto.
     float d = 3.0f;
     float ox[8] = {-d,  0,  d, -d, d, -d, 0, d};
     float oy[8] = {-d, -d, -d,  0, 0,  d, d, d};
@@ -1359,13 +1305,13 @@ void desenharTTFcentralizado(float cx, float y, float escala, const char* texto,
 }
 
 // Tela INICIAL seguindo a regra dos terços (eixo Y):
-//  22% -> título | 48% -> capivara (3D) | 74% -> instrução
-//  + chão 2D enxuto nos 15% inferiores com crista de grama.
+// 22% -> título | 48% -> capivara (3D) | 74% -> instrução
+// + chão 2D enxuto nos 15% inferiores com crista de grama.
 void desenharTelaInicio() {
     float cx = LARGURA_JANELA / 2.0f;
     float W = LARGURA_JANELA, H = ALTURA_JANELA;
 
-    // ---- CHÃO: faixa de grama pixelada nos 15% inferiores ----
+    // CHÃO: faixa de grama pixelada nos 15% inferiores
     float chaoTopo = H * 0.15f;
     glColor3f(1.0f, 1.0f, 1.0f);
     glEnable(GL_TEXTURE_2D);
@@ -1384,11 +1330,11 @@ void desenharTelaInicio() {
         glVertex2f(W, chaoTopo);     glVertex2f(0, chaoTopo);
     glEnd();
 
-    // ---- TÍTULO a 22% do TOPO (em ortho, y mede de baixo p/ cima) ----
+    // TÍTULO a 22% do TOPO (em ortho, y mede de baixo p/ cima)
     float escTitulo = 0.72f;
     desenharTituloTTF(cx, H * (1.0f - 0.22f), escTitulo, "FLAPPY CAPIVARA");
 
-    // ---- INSTRUÇÃO a 74% do topo: METADE do tamanho, piscando ----
+    // INSTRUÇÃO a 74% do topo: METADE do tamanho, piscando
     // Branco + contorno preto simples (2px), SEM sombra/duplicata.
     float escInstr = escTitulo * 0.5f;
     float tempo = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
@@ -1406,7 +1352,7 @@ void desenharTelaInicio() {
     desenharTTFsolido(xi, yi + d, escInstr, instr, 0, 0, 0, alpha);
     desenharTTFsolido(xi, yi, escInstr, instr, 1.0f, 1.0f, 1.0f, alpha);
 
-    // ---- OPÇÕES DE DIFICULDADE (em dourado) a ~84% do topo ----
+    // OPÇÕES DE DIFICULDADE (em dourado) a ~84% do topo
     const char* dif = "1 FACIL   2 MEDIO   3 DIFICIL";
     float escDif = escTitulo * 0.34f;
     float xd = cx - larguraTTF(dif, escDif) / 2.0f;
@@ -1503,10 +1449,8 @@ void desenharHUD() {
     glEnable(GL_CULL_FACE);
 }
 
-// ============================================================
-//  Callback de desenho — chamado toda vez que a janela
-//  precisa ser redesenhada (pelo glutPostRedisplay ou evento)
-// ============================================================
+// Callback de desenho — chamado toda vez que a janela
+// precisa ser redesenhada (pelo glutPostRedisplay ou evento)
 void display() {
     // Limpa o buffer de cor e o buffer de profundidade (z-buffer)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1533,11 +1477,9 @@ void display() {
         glTranslatef(aleat(-s, s), aleat(-s, s), 0.0f);
     }
 
-    // --------------------------------------------------------
-    //  Desenha o chão como um quadrilátero no plano XZ
-    //  (servirá de referência visual enquanto o jogo não tem
-    //  cenário completo)
-    // --------------------------------------------------------
+    // Desenha o chão como um quadrilátero no plano XZ
+    // (servirá de referência visual enquanto o jogo não tem
+    // cenário completo)
     // O chão 3D só aparece no jogo. Na tela inicial o cenário fica
     // limpo (só céu) e desenhamos um chão 2D enxuto no HUD.
     if (g_estado != INICIO) {
@@ -1587,10 +1529,8 @@ void display() {
     glutSwapBuffers();
 }
 
-// ============================================================
-//  Callback de redimensionamento — chamado quando a janela
-//  muda de tamanho. Reajusta o viewport e a projeção.
-// ============================================================
+// Callback de redimensionamento — chamado quando a janela
+// muda de tamanho. Reajusta o viewport e a projeção.
 void reshape(int largura, int altura) {
     // Evita divisão por zero
     if (altura == 0) altura = 1;
@@ -1612,9 +1552,7 @@ void reshape(int largura, int altura) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-// ============================================================
-//  Callback de teclado — teclas especiais e normais
-// ============================================================
+// Callback de teclado — teclas especiais e normais
 // Dá o impulso de pulo (só faz efeito enquanto está jogando).
 void pular() {
     if (g_estado == JOGANDO) {
@@ -1664,10 +1602,8 @@ void mouse(int botao, int estadoBotao, int x, int y) {
         acaoPrincipal();
 }
 
-// ============================================================
-//  Callback idle — chamado quando não há eventos pendentes.
-//  Aqui faremos a atualização da física no futuro.
-// ============================================================
+// Callback idle — chamado quando não há eventos pendentes.
+// Aqui faremos a atualização da física no futuro.
 void idle() {
     float agora = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
     float dt = agora - g_tempoAnterior;
@@ -1702,10 +1638,8 @@ void idle() {
     glutPostRedisplay();
 }
 
-// ============================================================
-//  Inicialização do OpenGL — configurações que ficam fixas
-//  durante todo o jogo
-// ============================================================
+// Inicialização do OpenGL — configurações que ficam fixas
+// durante todo o jogo
 void inicializarOpenGL() {
     // Cor de fundo: azul-céu claro
     glClearColor(0.53f, 0.81f, 0.98f, 1.0f);
@@ -1714,7 +1648,7 @@ void inicializarOpenGL() {
     // objetos mais longe ficam atrás de objetos mais perto
     glEnable(GL_DEPTH_TEST);
 
-    // -------- Iluminação --------
+    // Iluminação
     glEnable(GL_LIGHTING);
     glEnable(GL_LIGHT0);
 
@@ -1746,16 +1680,14 @@ void inicializarOpenGL() {
 
     glEnable(GL_NORMALIZE);
 
-    // -------- Visibilidade extra --------
+    // Visibilidade extra
     // Back-face culling: não desenha as faces traseiras dos objetos.
     // (Se algo sumir/ficar furado no jogo, basta remover estas 2 linhas.)
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
 }
 
-// ============================================================
-//  Ponto de entrada do programa
-// ============================================================
+// Ponto de entrada do programa
 int main(int argc, char** argv) {
     // Modo de teste: roda os auto-testes das funções puras e sai.
     if (argc > 1 && std::string(argv[1]) == "--testes") {
@@ -1767,9 +1699,9 @@ int main(int argc, char** argv) {
     glutInit(&argc, argv);
 
     // Modo de display:
-    //  GLUT_DOUBLE  = double buffering (sem flickering)
-    //  GLUT_RGB     = cores RGB
-    //  GLUT_DEPTH   = buffer de profundidade (z-buffer)
+    // GLUT_DOUBLE  = double buffering (sem flickering)
+    // GLUT_RGB     = cores RGB
+    // GLUT_DEPTH   = buffer de profundidade (z-buffer)
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
 
     // Define tamanho e posição inicial da janela

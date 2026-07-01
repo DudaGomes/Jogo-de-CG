@@ -2,3 +2,7 @@
 flappy_capivara
 *.o
 .DS_Store
+
+# Pacote de entrega e PDF gerado (não versionar)
+*.zip
+*.pdf
