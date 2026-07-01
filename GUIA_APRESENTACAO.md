@@ -391,3 +391,77 @@ Tudo em projeção **ortográfica** (`desenharHUD`, [main.cpp:1472](main.cpp)):
 | **Visibilidade** | z-buffer ([main.cpp:1715](main.cpp)) + culling ([main.cpp:1752](main.cpp)) |
 | **Modelos 3D** | Assimp `carregarModelo` ([main.cpp:324](main.cpp)) |
 | **Áudio (bônus)** | `audioCallback` ([main.cpp:219](main.cpp)) |
+
+> ⚠️ Os números de linha acima e ao longo do guia são **aproximados** e podem
+> estar deslocados após edições; use os **nomes das funções** como âncora.
+
+---
+
+## 19. Compilar & dependências
+
+**Plataforma:** macOS (usamos os frameworks **OpenGL** e **GLUT** da Apple).
+
+**Dependências:**
+- **Xcode Command Line Tools** — fornecem o compilador (`clang`) e os frameworks
+  `OpenGL`/`GLUT`. Instalar: `xcode-select --install`.
+- **Assimp** (carrega os modelos) — via Homebrew: `brew install assimp`. Fica em
+  `/opt/homebrew/include` (headers) e `/opt/homebrew/lib` (biblioteca).
+- **stb_image, stb_truetype, miniaudio** — **não precisam instalar**: são
+  *single-header libraries* que já acompanham o projeto (`.h` na raiz). O `main.cpp`
+  "ativa" o código de cada uma com um `#define ..._IMPLEMENTATION` antes do `#include`.
+
+**Como compilamos (`build.sh`):**
+- Usamos **`/usr/bin/clang++`** (o clang **da Apple**), não um `clang++` genérico.
+  *Por quê?* Se houver um `clang++` do Homebrew (LLVM) no `PATH`, ele **não acha o SDK
+  do macOS** e falha com `'GLUT/glut.h' file not found`. O clang da Apple acha o SDK
+  sozinho.
+- Flags principais:
+  - `-I/opt/homebrew/include -L/opt/homebrew/lib -lassimp` → achar e **linkar** o Assimp.
+  - `-framework OpenGL -framework GLUT` → os frameworks gráficos do macOS.
+  - `-framework CoreFoundation -framework CoreAudio -framework AudioToolbox -lpthread`
+    → exigidos pelo **miniaudio** (áudio do sistema + threads).
+  - `-std=c++17` e `-Wno-deprecated-declarations` (silencia avisos de APIs antigas).
+
+**Comandos:**
+```bash
+./build.sh                  # compila e abre o jogo
+./build.sh compilar         # só compila (sem abrir a janela)
+./flappy_capivara --testes  # roda os testes das funções de colisão
+```
+
+**Perguntas prováveis:** *"Como vocês compilam? Que bibliotecas precisam?"* → Assimp via
+Homebrew; OpenGL/GLUT são frameworks do macOS; stb/miniaudio já vêm no projeto.
+*"Por que esses `-framework`?"* → OpenGL/GLUT para render e janela; Core/Audio para o
+miniaudio.
+
+---
+
+## 20. Assets e pipeline (de onde vem cada coisa)
+
+**De onde vêm os assets:**
+
+| Asset | Origem | Formato |
+|---|---|---|
+| Capivara (+ textura) | poly.pizza (licença livre) | `.obj` + `.png` |
+| Abelha, asa, grama, 2 árvores | poly.pizza (licença livre) | `.obj` |
+| **Cano** | **modelado por nós no Blender** | `.glb` (2 malhas: corpo + borda) |
+| Fonte do HUD | Pixelify Sans (Google Fonts) | `.ttf` |
+| Textura do chão | **gerada por código** (procedural) | — |
+| Efeitos sonoros | **sintetizados por código** (8-bit) | — |
+
+> Contra suspeita de plágio: os modelos são de **licença livre** (poly.pizza) e o
+> **cano nós mesmos modelamos** — o arquivo `blender/cano.blend` é a prova.
+
+**Como cada asset entra no jogo** (tudo carregado no `main()`):
+- **Modelos**: `carregarModelo` (Assimp lê `.obj`/`.glb`) → `calcularBoundingBox`
+  (centraliza e escala para um tamanho padrão) → a geometria vira **display list** na
+  primeira vez que é desenhada.
+- **Textura da capivara**: `carregarTextura` (stb_image lê o PNG).
+- **Textura do chão**: `criarTexturaGrama` (gera os pixels no código).
+- **Fonte**: `carregarFonte` (stb_truetype rasteriza a `.ttf` num atlas de textura).
+- **Áudio**: `iniciarAudio` (miniaudio) + `audioCallback` (sintetiza as ondas).
+- **Cano**: `prepararCano` separa as 2 malhas (corpo/borda) para esticar só o corpo.
+
+**Por que `.obj` e `.glb`?** `.obj` é texto simples (bom para os modelos prontos). O
+**cano** saiu do Blender em `.glb` (glTF binário) porque ele guarda **2 malhas +
+materiais** num arquivo só — e o Assimp lê os dois formatos com a mesma função.
